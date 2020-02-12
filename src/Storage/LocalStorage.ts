@@ -90,7 +90,7 @@ export class LocalStorage extends Storage {
 	 */
 	public async delete(location: string): Promise<DeleteResponse> {
 		const fullPath = this.dataPath(location);
-		let wasDeleted: boolean = true;
+		let wasDeleted = true;
 
 		try {
 			await Promise.all([
@@ -271,7 +271,7 @@ export class LocalStorage extends Storage {
 	}
 
 	private async *flatListAbsolute(prefix: string): AsyncGenerator<FileListResponse> {
-		let prefixDirectory = (prefix[prefix.length-1] === '/') ? prefix : dirname(prefix);
+		const prefixDirectory = (prefix[prefix.length-1] === '/') ? prefix : dirname(prefix);
 
 		try {
 			for (const file of await promisify(fs.readdir)(prefixDirectory, {withFileTypes: true, encoding: 'utf-8'})) {
