@@ -17,12 +17,12 @@ export class StorageManager {
 	/**
 	 * Configuration of the storage manager.
 	 */
-	private readonly _config: StorageManagerConfig;
+	private _config: StorageManagerConfig;
 
 	/**
 	 * Created disk instances
 	 */
-	private readonly _diskInstances: Map<string, GenericStorage>;
+	private _diskInstances: Map<string, GenericStorage>;
 
 	/**
 	 * List of available storages
@@ -30,12 +30,16 @@ export class StorageManager {
 	private _storages: Map<string, StorageConstructor> = new Map();
 
 	constructor(config: StorageManagerConfig) {
-		this._config = Object.assign({disks: {}}, config);
-		this._diskInstances = new Map();
+		this.config(config);
 		this.registerStorage('azureBlob', AzureBlockBlobStorage);
 		this.registerStorage('gcs', GoogleCloudStorage);
 		this.registerStorage('local', LocalStorage);
 		this.registerStorage('s3', AmazonWebServicesS3Storage);
+	}
+
+	config(config: StorageManagerConfig) {
+		this._config = Object.assign({disks: {}}, config);
+		this._diskInstances = new Map();
 	}
 
 	addDisk(name: string, config: StorageManagerDiskConfig) {
