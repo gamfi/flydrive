@@ -6,8 +6,8 @@
  */
 
 import { Readable } from 'stream';
-import { Storage as GCSDriver, StorageOptions, Bucket, File } from '@google-cloud/storage';
-import Storage from './Storage';
+import {StorageOptions, Bucket, File} from '@google-cloud/storage';
+import { Storage } from './Storage';
 import { isReadableStream, pipeline } from '../utils';
 import {
 	Response,
@@ -16,50 +16,39 @@ import {
 	SignedUrlResponse,
 	SignedUrlOptions,
 	StatResponse,
-	FileListResponse
+	FileListResponse,
+	DeleteResponse,
 } from '../types';
-import { FileNotFound, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath } from '../Exceptions';
+import { FileNotFound, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath, InvalidInput } from '../Exceptions';
 
-function handleError(err: Error & { code?: number | string }, path: string): never {
+function handleError(err: Error & { code?: number | string }, path: string): Error {
 	switch (err.code) {
 		case 401:
-			throw new AuthorizationRequired(err, path);
+			return new AuthorizationRequired(err, path);
 		case 403:
-			throw new PermissionMissing(err, path);
+			return new PermissionMissing(err, path);
 		case 404:
-			throw new FileNotFound(err, path);
+			return new FileNotFound(err, path);
 		case 'ENOENT':
-			throw new WrongKeyPath(err, path);
+			return new WrongKeyPath(err, path);
 		default:
-			throw new UnknownException(err, String(err.code), path);
+			return new UnknownException(err, String(err.code), path);
 	}
 }
 
 export class GoogleCloudStorage extends Storage {
-	protected $config: GoogleCloudStorageConfig;
-	protected $driver: GCSDriver;
-	protected $bucket: Bucket;
-
-	public constructor(config: GoogleCloudStorageConfig) {
+	public constructor(private readonly $bucket: Bucket) {
 		super();
-		this.$config = config;
+	}
+
+	static fromConfig(config: GoogleCloudStorageConfig): GoogleCloudStorage {
 		const GCSStorage = require('@google-cloud/storage').Storage;
-		this.$driver = new GCSStorage(config);
-		this.$bucket = this.$driver.bucket(config.bucket);
+
+		return new GoogleCloudStorage(new GCSStorage(config).bucket(config.bucket))
 	}
 
 	private _file(path: string): File {
 		return this.$bucket.file(path);
-	}
-
-	/**
-	 * Use a different bucket at runtime.
-	 * This method returns a new instance of GoogleCloudStorage.
-	 */
-	public bucket(name: string): GoogleCloudStorage {
-		const newStorage = new GoogleCloudStorage(this.$config);
-		newStorage.$bucket = newStorage.$driver.bucket(name);
-		return newStorage;
 	}
 
 	/**
@@ -73,27 +62,30 @@ export class GoogleCloudStorage extends Storage {
 			const result = await srcFile.copy(destFile);
 			return { raw: result };
 		} catch (e) {
-			return handleError(e, src);
+			throw handleError(e, src);
 		}
 	}
 
 	/**
 	 * Delete existing file.
 	 */
-	public async delete(location: string): Promise<Response> {
-		try {
-			const result = await this._file(location).delete();
-			return { raw: result };
-		} catch (e) {
-			return handleError(e, location);
-		}
-	}
+	public async delete(location: string): Promise<DeleteResponse> {
+		let raw;
+		let wasDeleted = true;
 
-	/**
-	 * Returns the driver.
-	 */
-	public driver(): GCSDriver {
-		return this.$driver;
+		try {
+			raw = await this._file(location).delete();
+		} catch (e) {
+			raw = e;
+			e = handleError(e, location);
+
+			if (e instanceof FileNotFound) {
+				wasDeleted = false;
+			} else {
+				throw e;
+			}
+		}
+		return {raw, wasDeleted}
 	}
 
 	/**
@@ -104,7 +96,7 @@ export class GoogleCloudStorage extends Storage {
 			const result = await this._file(location).exists();
 			return { exists: result[0], raw: result };
 		} catch (e) {
-			return handleError(e, location);
+			throw handleError(e, location);
 		}
 	}
 
@@ -116,7 +108,7 @@ export class GoogleCloudStorage extends Storage {
 			const result = await this._file(location).download();
 			return { content: result[0], raw: result };
 		} catch (e) {
-			return handleError(e, location);
+			throw handleError(e, location);
 		}
 	}
 
@@ -132,7 +124,7 @@ export class GoogleCloudStorage extends Storage {
 			});
 			return { signedUrl: result[0], raw: result };
 		} catch (e) {
-			return handleError(e, location);
+			throw handleError(e, location);
 		}
 	}
 
@@ -148,7 +140,7 @@ export class GoogleCloudStorage extends Storage {
 				raw: result,
 			};
 		} catch (e) {
-			return handleError(e, location);
+			throw handleError(e, location);
 		}
 	}
 
@@ -179,7 +171,7 @@ export class GoogleCloudStorage extends Storage {
 			const result = await srcFile.move(destFile);
 			return { raw: result };
 		} catch (e) {
-			return handleError(e, src);
+			throw handleError(e, src);
 		}
 	}
 
@@ -189,19 +181,31 @@ export class GoogleCloudStorage extends Storage {
 	 */
 	public async put(location: string, content: Buffer | Readable | string): Promise<Response> {
 		const file = this._file(location);
+		let result;
 
 		try {
 			if (isReadableStream(content)) {
 				const destStream = file.createWriteStream();
 				await pipeline(content, destStream);
-				return { raw: undefined };
+				result = { raw: undefined };
+			} else if (Buffer.isBuffer(content) || typeof(content) === 'string') {
+				result = {
+					raw: await file.save(content, {resumable: false})
+				};
 			}
-
-			const result = await file.save(content, { resumable: false });
-			return { raw: result };
 		} catch (e) {
-			return handleError(e, location);
+			throw handleError(e, location);
 		}
+
+		if (!result) {
+			throw new InvalidInput(
+				'content',
+				'AzureBlobStorage#put',
+				'only Buffers, ReadableStreams and strings are supported'
+			);
+		}
+
+		return result;
 	}
 
 	async *flatList(prefix: string): AsyncIterable<FileListResponse> {

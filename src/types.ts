@@ -20,23 +20,6 @@ export interface StorageManagerConfig {
 	disks?: StorageManagerDiskConfig;
 }
 
-export interface Response {
-	raw: unknown;
-}
-
-export interface DeleteResponse {
-	raw: unknown;
-	wasDeleted?: boolean,
-}
-
-export interface ExistsResponse extends Response {
-	exists: boolean;
-}
-
-export interface ContentResponse<ContentType> extends Response {
-	content: ContentType;
-}
-
 export interface SignedUrlOptions {
 	/**
 	 * Expiration time of the URL.
@@ -44,6 +27,22 @@ export interface SignedUrlOptions {
 	 * @default `900` (15 minutes)
 	 */
 	expiry?: number;
+}
+
+export interface Response {
+	raw: unknown;
+}
+
+export interface DeleteResponse extends Response{
+	wasDeleted: boolean|null,
+}
+
+export interface ExistsResponse extends Response {
+	exists: boolean;
+}
+
+export interface ContentResponse<T> extends Response {
+	content: T;
 }
 
 export interface SignedUrlResponse extends Response {
@@ -58,4 +57,3 @@ export interface StatResponse extends Response {
 export interface FileListResponse {
    path: string,
 }
-

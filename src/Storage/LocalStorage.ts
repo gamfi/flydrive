@@ -10,20 +10,28 @@ import { dirname, join, resolve, relative } from 'path';
 import fse from 'fs-extra';
 import fs from 'fs';
 
-import Storage from './Storage';
-import { FileNotFound, UnknownException, PermissionMissing } from '../Exceptions';
+import { Storage } from './Storage';
+import { FileNotFound, UnknownException, PermissionMissing, InvalidInput } from '../Exceptions';
 import { isReadableStream, pipeline } from '../utils';
-import { Response, ExistsResponse, ContentResponse, StatResponse, FileListResponse } from '../types';
-import { promisify } from "util";
+import {
+	Response,
+	ExistsResponse,
+	ContentResponse,
+	StatResponse,
+	FileListResponse,
+	DeleteResponse
+} from '../types';
+import {promisify} from "util";
 
-function handleError(err: Error & { code: string; path?: string }, fullPath: string): never {
+function handleError(err: Error & { code: string; path?: string }, fullPath: string): Error {
 	switch (err.code) {
+		case 'E_FILE_NOT_FOUND':
 		case 'ENOENT':
-			throw new FileNotFound(err, err.path || fullPath);
+			return new FileNotFound(err, err.path || fullPath);
 		case 'EPERM':
-			throw new PermissionMissing(err, err.path || fullPath);
+			return new PermissionMissing(err, err.path || fullPath);
 		default:
-			throw new UnknownException(err, err.code, err.path || fullPath);
+			return new UnknownException(err, err.code, err.path || fullPath);
 	}
 }
 
@@ -35,6 +43,10 @@ export class LocalStorage extends Storage {
 		this.$root = resolve(config.root);
 	}
 
+	static fromConfig(config: LocalFileSystemConfig): Storage {
+		return new LocalStorage(config);
+	}
+
 	/**
 	 * Returns full path to the storage root directory.
 	 */
@@ -43,60 +55,42 @@ export class LocalStorage extends Storage {
 	}
 
 	/**
-	 * Appends content to a file.
-	 */
-	public async append(
-		location: string,
-		content: Buffer | Readable | string,
-		options?: fse.WriteFileOptions
-	): Promise<Response> {
-		if (isReadableStream(content)) {
-			return this.put(location, content, Object.assign({ flags: 'a' }, options));
-		} else {
-			const fullPath = this._fullPath(location);
-
-			try {
-				const result = await fse.appendFile(fullPath, content, options);
-				return { raw: result };
-			} catch (e) {
-				return handleError(e, fullPath);
-			}
-		}
-	}
-
-	/**
 	 * Copy a file to a location.
 	 */
-	public async copy(src: string, dest: string, options?: fse.CopyOptions): Promise<Response> {
+	public async copy(src: string, dest: string): Promise<Response> {
 		const srcPath = this._fullPath(src);
 
 		try {
-			const result = await fse.copy(srcPath, this._fullPath(dest), options);
+			const result = await fse.copy(srcPath, this._fullPath(dest));
 			return { raw: result };
 		} catch (e) {
-			return handleError(e, srcPath);
+			throw handleError(e, srcPath);
 		}
 	}
 
 	/**
 	 * Delete existing file.
 	 */
-	public async delete(location: string): Promise<Response> {
+	public async delete(location: string): Promise<DeleteResponse> {
 		const fullPath = this._fullPath(location);
+		let wasDeleted: boolean = true;
 
 		try {
-			const result = await fse.unlink(this._fullPath(location));
-			return { raw: result };
+			await fse.unlink(fullPath);
 		} catch (e) {
-			return handleError(e, fullPath);
-		}
-	}
+			e = handleError(e, location);
 
-	/**
-	 * Returns the driver.
-	 */
-	public driver(): typeof fse {
-		return fse;
+			if (e instanceof FileNotFound) {
+				wasDeleted = false;
+			} else {
+				throw e;
+			}
+		}
+
+		return {
+			raw: undefined,
+			wasDeleted,
+		};
 	}
 
 	/**
@@ -109,7 +103,7 @@ export class LocalStorage extends Storage {
 			const result = await fse.pathExists(fullPath);
 			return { exists: result, raw: result };
 		} catch (e) {
-			return handleError(e, fullPath);
+			throw handleError(e, location);
 		}
 	}
 
@@ -123,7 +117,7 @@ export class LocalStorage extends Storage {
 			const result = await fse.readFile(fullPath);
 			return { content: result, raw: result };
 		} catch (e) {
-			return handleError(e, fullPath);
+			throw handleError(e, location);
 		}
 	}
 
@@ -141,7 +135,7 @@ export class LocalStorage extends Storage {
 				raw: stat,
 			};
 		} catch (e) {
-			return handleError(e, fullPath);
+			throw handleError(e, location);
 		}
 	}
 
@@ -162,20 +156,7 @@ export class LocalStorage extends Storage {
 			const result = await fse.move(srcPath, this._fullPath(dest));
 			return { raw: result };
 		} catch (e) {
-			return handleError(e, srcPath);
-		}
-	}
-
-	/**
-	 * Prepends content to a file.
-	 */
-	public async prepend(location: string, content: Buffer | string, options?: fse.WriteFileOptions): Promise<Response> {
-		try {
-			const actualContent = (await this.getBuffer(location)).content.toString('utf-8');
-
-			return this.put(location, `${content}${actualContent}`, options);
-		} catch {
-			return this.put(location, content, options);
+			throw handleError(e, src);
 		}
 	}
 
@@ -186,24 +167,36 @@ export class LocalStorage extends Storage {
 	public async put(
 		location: string,
 		content: Buffer | Readable | string,
-		options?: fse.WriteFileOptions
 	): Promise<Response> {
+		let result;
 		const fullPath = this._fullPath(location);
 
 		try {
 			if (isReadableStream(content)) {
-				const dir = dirname(fullPath);
-				await fse.ensureDir(dir);
-				const ws = fse.createWriteStream(fullPath, options);
+				await fse.ensureDir(dirname(fullPath));
+				const ws = fse.createWriteStream(fullPath);
 				await pipeline(content, ws);
-				return { raw: undefined };
-			}
 
-			const result = await fse.outputFile(fullPath, content, options);
-			return { raw: result };
+				result = { raw: undefined };
+			} else if (Buffer.isBuffer(content) || typeof(content) === 'string') {
+				await fse.ensureDir(dirname(fullPath));
+				await fse.writeFile(fullPath, content);
+
+				result = { raw: undefined };
+			}
 		} catch (e) {
-			return handleError(e, fullPath);
+			throw handleError(e, location);
 		}
+
+		if (!result) {
+			throw new InvalidInput(
+				'content',
+				'LocalStorage#put',
+				'only Buffers, ReadableStreams and strings are supported'
+			);
+		}
+
+		return result;
 	}
 
 	flatList(prefix: string): AsyncIterable<FileListResponse> {

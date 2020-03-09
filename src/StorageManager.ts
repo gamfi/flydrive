@@ -6,7 +6,7 @@
  */
 
 import Storages from './Storage';
-import Storage from './Storage/Storage';
+import { Storage } from './Storage/Storage';
 import { InvalidConfig, DriverNotSupported } from './Exceptions';
 import { StorageManagerConfig, StorageManagerDiskConfig } from './types';
 

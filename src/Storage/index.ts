@@ -6,11 +6,13 @@
  */
 
 import { AmazonWebServicesS3Storage } from './AmazonWebServicesS3Storage';
+import { AzureBlockBlobStorage } from "./AzureBlockBlobStorage";
 import { GoogleCloudStorage } from './GoogleCloudStorage';
 import { LocalStorage } from './LocalStorage';
 
 export default {
-	s3: AmazonWebServicesS3Storage,
-	gcs: GoogleCloudStorage,
-	local: LocalStorage,
+	AmazonWebServicesS3Storage,
+	AzureBlockBlobStorage,
+	GoogleCloudStorage,
+	LocalStorage,
 };

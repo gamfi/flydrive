@@ -5,12 +5,11 @@
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  * @author Christopher Chrapka <krzysztof.chrapka gamfi pl>
  */
-import Storage from "./Storage";
-import {StorageOptions} from "@google-cloud/storage";
+import { Storage } from "./Storage";
 import {
     BlobSASPermissions,
     BlobServiceClient,
-    BlockBlobClient,
+    BlockBlobClient, ContainerClient,
     generateBlobSASQueryParameters, RestError, StorageSharedKeyCredential
 } from "@azure/storage-blob";
 import {Readable, PassThrough} from "stream";
@@ -24,37 +23,37 @@ import {
     SignedUrlResponse,
 } from "../types";
 import {isReadableStream} from "../utils";
-import {InvalidInput} from "../Exceptions/InvalidInput";
 import {streamToBuffer} from "../utils/streamToBuffer";
-import {AuthorizationRequired, FileNotFound, UnknownException} from "../Exceptions";
+import {AuthorizationRequired, FileNotFound, UnknownException, InvalidInput} from "../Exceptions";
 
-export interface AzureBlobStorageConfig extends StorageOptions {
+export interface AzureBlobStorageConfig {
     container: string;
     connectionString: string;
 }
 
 export class AzureBlockBlobStorage extends Storage
 {
-    private readonly $driver: BlobServiceClient;
-    private $container: string;
-
-    public constructor(private readonly $config: AzureBlobStorageConfig) {
+    constructor(private readonly $containerClient: ContainerClient) {
         super();
-        this.$driver = BlobServiceClient.fromConnectionString(this.$config.connectionString);
-        this.$container = $config.container;
     }
 
-    bucket(name: string): void {
-        this.$container = name;
+    static fromConfig(config: AzureBlobStorageConfig): AzureBlockBlobStorage {
+        return new AzureBlockBlobStorage(
+            BlobServiceClient
+                .fromConnectionString(config.connectionString)
+                .getContainerClient(config.container),
+        );
     }
 
     async copy(src: string, dest: string): Promise<Response> {
         const destBlobClient = this.blockBlobClient(dest);
-        const downloadUrl = await this.getSignedUrl(src);
+        const sourceUrl = await this.getSignedUrl(src);
 
         try {
             return {
-                raw: await destBlobClient.syncCopyFromURL(downloadUrl.signedUrl),
+                raw: await destBlobClient.syncCopyFromURL(
+                    sourceUrl.signedUrl,
+                ),
             };
         } catch (e) {
             throw this.convertError(e);
@@ -63,18 +62,23 @@ export class AzureBlockBlobStorage extends Storage
 
     async delete(location: string): Promise<DeleteResponse> {
         const blockBlobClient = this.blockBlobClient(location);
+        let raw;
+        let wasDeleted = true;
 
         try {
-            return {
-                raw: await blockBlobClient.delete()
-            };
+            raw = await blockBlobClient.delete();
         } catch (e) {
-            throw this.convertError(e);
-        }
-    }
+            raw = e;
+            e = this.convertError(e);
 
-    driver(): BlobServiceClient {
-        return this.$driver;
+            if (e instanceof FileNotFound) {
+                wasDeleted = false;
+            } else {
+                throw e;
+            }
+        }
+
+        return {raw, wasDeleted};
     }
 
     async exists(location: string): Promise<ExistsResponse> {
@@ -128,7 +132,7 @@ export class AzureBlockBlobStorage extends Storage
 
     async getSignedUrl(location: string, options?: SignedUrlOptions): Promise<SignedUrlResponse> {
         const expiry = options && options.expiry || 3600;
-        const container = this.$container;
+        const container = this.$containerClient.containerName;
         const startsOn = new Date();
         const expiresOn = new Date(new Date().valueOf() + expiry * 1000);
         const client = this.blockBlobClient(location);
@@ -141,7 +145,7 @@ export class AzureBlockBlobStorage extends Storage
                 startsOn, // Required
                 expiresOn, // Optional
             },
-            this.$driver.credential as StorageSharedKeyCredential,
+            this.$containerClient.credential as StorageSharedKeyCredential,
         );
 
         return {
@@ -152,24 +156,19 @@ export class AzureBlockBlobStorage extends Storage
 
     async move(src: string, dest: string): Promise<Response> {
         const srcBlobClient = this.blockBlobClient(src);
-        const destBlobClient = this.blockBlobClient(dest);
-
         try {
-            const sourceUrl = await this.getSignedUrl(src);
-            const copyResponse = await destBlobClient.syncCopyFromURL(sourceUrl.signedUrl);
-            const deleteResponse = await srcBlobClient.delete();
+            const copyResponse = await this.copy(src, dest);
 
             return {
                 raw: {
-                    copy: copyResponse,
-                    delete: deleteResponse,
+                    copy: copyResponse.raw,
+                    delete: await srcBlobClient.delete(),
                 },
             };
         } catch (e) {
             throw this.convertError(e);
         }
     }
-
 
     async put(location: string, content: Buffer | Readable | string): Promise<Response> {
         const blockBlobClient = this.blockBlobClient(location);
@@ -184,7 +183,7 @@ export class AzureBlockBlobStorage extends Storage
                 };
             } else if (isReadableStream(content)) {
                 result = {
-                    raw: await blockBlobClient.uploadStream(content),
+                    raw: await blockBlobClient.uploadStream(content, undefined, undefined),
                 };
             }
         } catch (e) {
@@ -203,8 +202,7 @@ export class AzureBlockBlobStorage extends Storage
     }
 
     private blockBlobClient(location: string): BlockBlobClient {
-        const containerClient = this.$driver.getContainerClient(this.$container);
-        return containerClient.getBlockBlobClient(location);
+        return this.$containerClient.getBlockBlobClient(location);
     }
 
     private convertError(e: RestError): Error {
@@ -221,9 +219,7 @@ export class AzureBlockBlobStorage extends Storage
     }
 
     async *flatList(prefix: string): AsyncIterable<FileListResponse> {
-        const containerClient = this.$driver.getContainerClient(this.$container);
-
-        for await (const blob of containerClient.listBlobsFlat({prefix})) {
+        for await (const blob of this.$containerClient.listBlobsFlat({prefix})) {
             yield {
                 path: blob.name,
             }

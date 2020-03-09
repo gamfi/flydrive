@@ -7,90 +7,89 @@
 
 import { Readable } from 'stream';
 import S3, { ClientConfiguration } from 'aws-sdk/clients/s3';
-import {Storage} from '..';
-import { UnknownException, NoSuchBucket, FileNotFound } from '../Exceptions';
-import { SignedUrlOptions, Response, ExistsResponse, ContentResponse, SignedUrlResponse, StatResponse, FileListResponse } from '../types';
+import {UnknownException, NoSuchBucket, FileNotFound, PermissionMissing} from '../Exceptions';
+import {
+	ContentResponse,
+	DeleteResponse,
+	ExistsResponse,
+	StatResponse,
+	FileListResponse,
+	Response,
+	SignedUrlOptions,
+	SignedUrlResponse,
+} from '../types';
+import { Storage } from "./Storage";
 
-function handleError(err: Error, path: string, bucket: string): never {
+function handleError(err: Error, path: string, bucket: string): Error {
 	switch (err.name) {
 		case 'NoSuchBucket':
-			throw new NoSuchBucket(err, bucket);
+			return new NoSuchBucket(err, bucket);
 		case 'NoSuchKey':
-			throw new FileNotFound(err, path);
+			return new FileNotFound(err, path);
+		case 'AllAccessDisabled':
+			return new PermissionMissing(err, path);
 		default:
-			throw new UnknownException(err, err.name, path);
+			return new UnknownException(err, err.name, path);
 	}
 }
 
 export class AmazonWebServicesS3Storage extends Storage {
-	protected $driver: S3;
-	protected $config: AWSS3Config;
-	protected $bucket: string;
-
-	constructor(config: AWSS3Config) {
+	constructor(protected readonly $driver: S3, protected readonly $bucket: string) {
 		super();
-		// eslint-disable-next-line @typescript-eslint/no-var-requires
-		const S3 = require('aws-sdk/clients/s3');
-
-		this.$driver = new S3({
-			accessKeyId: config.key,
-			secretAccessKey: config.secret,
-			...config,
-		});
-
-		this.$config = config;
-		this.$bucket = config.bucket;
 	}
 
 	/**
-	 * Use a different bucket at runtime.
-	 * This method returns a new instance of AWSS3.
+	 * @param config
 	 */
-	public bucket(bucket: string): AmazonWebServicesS3Storage {
-		return new AmazonWebServicesS3Storage({
-			...this.$config,
-			bucket,
-		});
+	static fromConfig(config: AWSS3Config): AmazonWebServicesS3Storage {
+		// eslint-disable-next-line @typescript-eslint/no-var-requires
+		const S3 = require('aws-sdk/clients/s3');
+
+		return new AmazonWebServicesS3Storage(
+			new S3({
+				accessKeyId: config.key,
+				secretAccessKey: config.secret,
+				...config,
+			}),
+			config.bucket,
+		);
 	}
 
 	/**
 	 * Copy a file to a location.
 	 */
-	public async copy(src: string, dest: string, options: object): Promise<Response> {
+	public async copy(src: string, dest: string): Promise<Response> {
 		const params = {
 			Key: dest,
 			Bucket: this.$bucket,
 			CopySource: `/${this.$bucket}/${src}`,
-			...options,
 		};
 
 		try {
 			const result = await this.$driver.copyObject(params).promise();
 			return { raw: result };
 		} catch (e) {
-			return handleError(e, src, this.$bucket);
+			throw handleError(e, src, this.$bucket);
 		}
 	}
 
 	/**
 	 * Delete existing file.
 	 */
-	public async delete(location: string): Promise<Response> {
+	public async delete(location: string): Promise<DeleteResponse> {
 		const params = { Key: location, Bucket: this.$bucket };
+		let raw: any;
 
 		try {
-			const result = await this.$driver.deleteObject(params).promise();
-			return { raw: result };
+			raw = await this.$driver.deleteObject(params).promise();
 		} catch (e) {
-			return handleError(e, location, this.$bucket);
+			throw handleError(e, location, this.$bucket);
 		}
-	}
 
-	/**
-	 * Returns the driver.
-	 */
-	public driver(): S3 {
-		return this.$driver;
+		return {
+			raw,
+			wasDeleted: null, // amazon does not inform the client if anything was deleted
+		};
 	}
 
 	/**
@@ -106,7 +105,7 @@ export class AmazonWebServicesS3Storage extends Storage {
 			if (e.statusCode === 404) {
 				return { exists: false, raw: e };
 			} else {
-				return handleError(e, location, this.$bucket);
+				throw handleError(e, location, this.$bucket);
 			}
 		}
 	}
@@ -115,17 +114,14 @@ export class AmazonWebServicesS3Storage extends Storage {
 	 * Returns the file contents as Buffer.
 	 */
 	public async getBuffer(location: string): Promise<ContentResponse<Buffer>> {
-		const params = { Key: location, Bucket: this.$bucket };
-
 		try {
-			const result = await this.$driver.getObject(params).promise();
-
+			const result = await this.$driver.getObject({ Key: location, Bucket: this.$bucket }).promise();
 			// S3.getObject returns a Buffer in Node.js
 			const body = result.Body as Buffer;
 
 			return { content: body, raw: result };
 		} catch (e) {
-			return handleError(e, location, this.$bucket);
+			throw handleError(e, location, this.$bucket);
 		}
 	}
 
@@ -136,24 +132,16 @@ export class AmazonWebServicesS3Storage extends Storage {
 		const { expiry = 900 } = options;
 
 		try {
-			const result = await new Promise((resolve: (value: string) => void, reject): void => {
-				const params = {
-					Key: location,
-					Bucket: this.$bucket,
-					Expiry: expiry,
-				};
+			const params = {
+				Key: location,
+				Bucket: this.$bucket,
+				Expires: expiry,
+			};
+			const result = await this.$driver.getSignedUrlPromise('getObject', params);
 
-				this.$driver.getSignedUrl('getObject', params, (error, url) => {
-					if (error) {
-						return reject(error);
-					}
-
-					return resolve(url);
-				});
-			});
 			return { signedUrl: result, raw: result };
 		} catch (e) {
-			return handleError(e, location, this.$bucket);
+			throw handleError(e, location, this.$bucket);
 		}
 	}
 
@@ -171,7 +159,7 @@ export class AmazonWebServicesS3Storage extends Storage {
 				raw: result,
 			};
 		} catch (e) {
-			return handleError(e, location, this.$bucket);
+			throw handleError(e, location, this.$bucket);
 		}
 	}
 
@@ -203,7 +191,7 @@ export class AmazonWebServicesS3Storage extends Storage {
 	 * the hood.
 	 */
 	public async move(src: string, dest: string): Promise<Response> {
-		await this.copy(src, dest, {});
+		await this.copy(src, dest);
 		await this.delete(src);
 		return { raw: undefined };
 	}
@@ -218,7 +206,7 @@ export class AmazonWebServicesS3Storage extends Storage {
 			const result = await this.$driver.upload(params).promise();
 			return { raw: result };
 		} catch (e) {
-			return handleError(e, location, this.$bucket);
+			throw handleError(e, location, this.$bucket);
 		}
 	}
 
