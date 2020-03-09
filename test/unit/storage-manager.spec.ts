@@ -8,9 +8,9 @@
 import { resolve } from 'path';
 import test from 'japa';
 
-import Storage from '../../src/Storage';
+import Storage from '../../src/Storage/Storage';
 import StorageManager from '../../src/StorageManager';
-import { LocalFileSystem } from '../../src/Drivers/LocalFileSystem';
+import { LocalStorage } from '../../src/Storage/LocalStorage';
 
 test.group('Storage Manager', (group) => {
 	test('throw exception when no disk name is defined', (assert) => {
@@ -67,7 +67,7 @@ test.group('Storage Manager', (group) => {
 			},
 		});
 		const localDriver = storageManager.disk('local');
-		assert.instanceOf(localDriver, LocalFileSystem);
+		assert.instanceOf(localDriver, LocalStorage);
 	});
 
 	test('extend and add new drivers', async (assert) => {
@@ -100,8 +100,8 @@ test.group('Storage Manager', (group) => {
 		const localWithCustomConfig = storageManager.disk('local', {
 			root: '/test',
 		});
-		assert.instanceOf(localWithDefaultConfig, LocalFileSystem);
-		assert.instanceOf(localWithCustomConfig, LocalFileSystem);
+		assert.instanceOf(localWithDefaultConfig, LocalStorage);
+		assert.instanceOf(localWithCustomConfig, LocalStorage);
 		// @ts-ignore
 		assert.notEqual(localWithDefaultConfig.$root, localWithCustomConfig.$root);
 		// @ts-ignore

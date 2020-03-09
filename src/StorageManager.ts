@@ -5,8 +5,8 @@
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  */
 
-import Drivers from './Drivers';
-import Storage from './Storage';
+import Storages from './Storage';
+import Storage from './Storage/Storage';
 import { InvalidConfig, DriverNotSupported } from './Exceptions';
 import { StorageManagerConfig, StorageManagerDiskConfig } from './types';
 
@@ -68,7 +68,7 @@ export default class StorageManager {
 			return customDriver();
 		}
 
-		const Driver = Drivers[diskConfig.driver];
+		const Driver = Storages[diskConfig.driver];
 
 		/**
 		 * Unable to pull driver from the drivers list

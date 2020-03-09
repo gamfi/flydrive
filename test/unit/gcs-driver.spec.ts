@@ -2,7 +2,7 @@ import test from 'japa';
 import uuid from 'uuid/v4';
 import { Storage } from '@google-cloud/storage';
 
-import { GoogleCloudStorage } from '../../src/Drivers/GoogleCloudStorage';
+import { GoogleCloudStorage } from '../../src/Storage/GoogleCloudStorage';
 import { PermissionMissing, FileNotFound } from '../../src/Exceptions';
 import {streamToString} from "../../src/utils/streamToString";
 

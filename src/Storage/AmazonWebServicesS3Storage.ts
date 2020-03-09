@@ -22,7 +22,7 @@ function handleError(err: Error, path: string, bucket: string): never {
 	}
 }
 
-export class AWSS3 extends Storage {
+export class AmazonWebServicesS3Storage extends Storage {
 	protected $driver: S3;
 	protected $config: AWSS3Config;
 	protected $bucket: string;
@@ -46,8 +46,8 @@ export class AWSS3 extends Storage {
 	 * Use a different bucket at runtime.
 	 * This method returns a new instance of AWSS3.
 	 */
-	public bucket(bucket: string): AWSS3 {
-		return new AWSS3({
+	public bucket(bucket: string): AmazonWebServicesS3Storage {
+		return new AmazonWebServicesS3Storage({
 			...this.$config,
 			bucket,
 		});

@@ -8,7 +8,7 @@
 import { Readable } from 'stream';
 import { dirname, join, resolve } from 'path';
 import fs from 'fs-extra';
-import Storage from '../Storage';
+import Storage from './Storage';
 import { FileNotFound, UnknownException, PermissionMissing } from '../Exceptions';
 import { isReadableStream, pipeline } from '../utils';
 import { Response, ExistsResponse, ContentResponse, StatResponse } from '../types';
@@ -24,7 +24,7 @@ function handleError(err: Error & { code: string; path?: string }, fullPath: str
 	}
 }
 
-export class LocalFileSystem extends Storage {
+export class LocalStorage extends Storage {
 	private $root: string;
 
 	constructor(config: LocalFileSystemConfig) {

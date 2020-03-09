@@ -4,7 +4,7 @@ import fs from 'fs';
 import fetch from 'node-fetch';
 import uuid from 'uuid';
 
-import {AzureBlockBlobStorage} from "../../src/Drivers/AzureBlockBlobStorage";
+import {AzureBlockBlobStorage} from "../../src/Storage/AzureBlockBlobStorage";
 import {InvalidInput} from "../../src/Exceptions/InvalidInput";
 import {BlobServiceClient} from "@azure/storage-blob";
 import {streamToString} from "../../src/utils/streamToString";

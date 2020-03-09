@@ -6,8 +6,8 @@
  */
 
 import { Readable } from 'stream';
-import { MethodNotSupported } from './Exceptions';
-import { Response, SignedUrlResponse, ContentResponse, ExistsResponse, SignedUrlOptions, StatResponse } from './types';
+import { MethodNotSupported } from '../Exceptions';
+import { Response, SignedUrlResponse, ContentResponse, ExistsResponse, SignedUrlOptions, StatResponse } from '../types';
 
 export default abstract class Storage {
 	/**

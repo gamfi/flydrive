@@ -10,10 +10,10 @@ import path from 'path';
 import fs from 'fs-extra';
 
 import * as CE from '../../src/Exceptions';
-import { LocalFileSystem } from '../../src/Drivers/LocalFileSystem';
+import { LocalStorage } from '../../src/Storage/LocalStorage';
 import {streamToString} from "../../src/utils/streamToString";
 
-let storage: LocalFileSystem;
+let storage: LocalStorage;
 
 function isWindowsDefenderError(error: { code: string }): boolean {
 	return error.code === 'EPERM';
@@ -26,7 +26,7 @@ function realFsPath(relativePath: string): string {
 test.group('Local Driver', (group) => {
 	group.before(async () => {
 		await fs.ensureDir(path.join(__dirname, 'storage'));
-		storage = new LocalFileSystem({ root: path.join(__dirname, 'storage') });
+		storage = new LocalStorage({ root: path.join(__dirname, 'storage') });
 	});
 
 	group.afterEach(async () => {

@@ -8,7 +8,7 @@
 import test from 'japa';
 import fs from 'fs-extra';
 
-import { AWSS3, AWSS3Config } from '../../src/Drivers/AWSS3';
+import { AmazonWebServicesS3Storage, AWSS3Config } from '../../src/Storage/AmazonWebServicesS3Storage';
 import { NoSuchBucket, FileNotFound } from '../../src/Exceptions';
 import {streamToString} from "../../src/utils/streamToString";
 
@@ -26,7 +26,7 @@ const config: AWSS3Config = {
 };
 
 test.group('S3 Driver', (group) => {
-	const s3Driver = new AWSS3(config);
+	const s3Driver = new AmazonWebServicesS3Storage(config);
 	const fileURL = (KEY) => `http://${s3Driver.driver().endpoint.host}/${process.env.S3_BUCKET}/${KEY}`;
 
 	group.before(async () => {
@@ -74,7 +74,7 @@ test.group('S3 Driver', (group) => {
 	test('throw exception when unable to put file', async (assert) => {
 		assert.plan(1);
 		try {
-			const s3Driver = new AWSS3({ ...config, bucket: 'wrong' });
+			const s3Driver = new AmazonWebServicesS3Storage({ ...config, bucket: 'wrong' });
 			await s3Driver.put('dummy-file.txt', 'Hello');
 		} catch (error) {
 			assert.instanceOf(error, NoSuchBucket);
@@ -132,7 +132,7 @@ test.group('S3 Driver', (group) => {
 	}).timeout(5000);
 
 	test('get public url to a file when region is not defined', (assert) => {
-		const s3Driver = new AWSS3({ ...config, region: undefined });
+		const s3Driver = new AmazonWebServicesS3Storage({ ...config, region: undefined });
 		const url = s3Driver.getUrl('dummy-file1.txt');
 		assert.equal(url, fileURL('dummy-file1.txt'));
 	}).timeout(5000);

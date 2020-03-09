@@ -5,7 +5,7 @@
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  * @author Christopher Chrapka <krzysztof.chrapka gamfi pl>
  */
-import Storage from "../Storage";
+import Storage from "./Storage";
 import {StorageOptions} from "@google-cloud/storage";
 import {
     BlobSASPermissions,

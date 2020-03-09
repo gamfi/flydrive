@@ -7,7 +7,7 @@
 
 import { Readable } from 'stream';
 import { Storage as GCSDriver, StorageOptions, Bucket, File } from '@google-cloud/storage';
-import Storage from '../Storage';
+import Storage from './Storage';
 import { isReadableStream, pipeline } from '../utils';
 import { Response, ExistsResponse, ContentResponse, SignedUrlResponse, SignedUrlOptions, StatResponse } from '../types';
 import { FileNotFound, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath } from '../Exceptions';
