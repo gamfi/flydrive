@@ -109,18 +109,6 @@ export class GoogleCloudStorage extends Storage {
 	}
 
 	/**
-	 * Returns the file contents.
-	 */
-	public async get(location: string, encoding = 'utf-8'): Promise<ContentResponse<string>> {
-		try {
-			const result = await this._file(location).download();
-			return { content: result[0].toString(encoding), raw: result };
-		} catch (e) {
-			return handleError(e, location);
-		}
-	}
-
-	/**
 	 * Returns the file contents as Buffer.
 	 */
 	public async getBuffer(location: string): Promise<ContentResponse<Buffer>> {

@@ -114,20 +114,6 @@ export class LocalStorage extends Storage {
 	}
 
 	/**
-	 * Returns the file contents as string.
-	 */
-	public async get(location: string, encoding = 'utf-8'): Promise<ContentResponse<string>> {
-		const fullPath = this._fullPath(location);
-
-		try {
-			const result = await fse.readFile(fullPath, encoding);
-			return { content: result, raw: result };
-		} catch (e) {
-			return handleError(e, fullPath);
-		}
-	}
-
-	/**
 	 * Returns the file contents as Buffer.
 	 */
 	public async getBuffer(location: string): Promise<ContentResponse<Buffer>> {
@@ -185,7 +171,7 @@ export class LocalStorage extends Storage {
 	 */
 	public async prepend(location: string, content: Buffer | string, options?: fse.WriteFileOptions): Promise<Response> {
 		try {
-			const { content: actualContent } = await this.get(location, 'utf-8');
+			const actualContent = (await this.getBuffer(location)).content.toString('utf-8');
 
 			return this.put(location, `${content}${actualContent}`, options);
 		} catch {

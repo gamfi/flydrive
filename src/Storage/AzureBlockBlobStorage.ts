@@ -91,23 +91,6 @@ export class AzureBlockBlobStorage extends Storage
         }
     }
 
-    async get(location: string, encoding?: string): Promise<ContentResponse<string>> {
-        const blockBlobClient = this.blockBlobClient(location);
-
-        try {
-            const downloaded = await blockBlobClient.download();
-            const buffer = Buffer.alloc(downloaded.contentLength || 0);
-            await streamToBuffer(downloaded.readableStreamBody as Readable, buffer, 0, buffer.length);
-
-            return {
-                raw: downloaded,
-                content: buffer.toString(encoding),
-            };
-        } catch (e) {
-            throw this.convertError(e);
-        }
-    }
-
     async getBuffer(location: string): Promise<ContentResponse<Buffer>> {
         const blockBlobClient = this.blockBlobClient(location);
 
