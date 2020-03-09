@@ -6,12 +6,15 @@
  */
 
 import { Readable } from 'stream';
-import { dirname, join, resolve } from 'path';
-import fs from 'fs-extra';
+import { dirname, join, resolve, relative } from 'path';
+import fse from 'fs-extra';
+import fs from 'fs';
+
 import Storage from './Storage';
 import { FileNotFound, UnknownException, PermissionMissing } from '../Exceptions';
 import { isReadableStream, pipeline } from '../utils';
-import { Response, ExistsResponse, ContentResponse, StatResponse } from '../types';
+import { Response, ExistsResponse, ContentResponse, StatResponse, FileListResponse } from '../types';
+import { promisify } from "util";
 
 function handleError(err: Error & { code: string; path?: string }, fullPath: string): never {
 	switch (err.code) {
@@ -45,7 +48,7 @@ export class LocalStorage extends Storage {
 	public async append(
 		location: string,
 		content: Buffer | Readable | string,
-		options?: fs.WriteFileOptions
+		options?: fse.WriteFileOptions
 	): Promise<Response> {
 		if (isReadableStream(content)) {
 			return this.put(location, content, Object.assign({ flags: 'a' }, options));
@@ -53,7 +56,7 @@ export class LocalStorage extends Storage {
 			const fullPath = this._fullPath(location);
 
 			try {
-				const result = await fs.appendFile(fullPath, content, options);
+				const result = await fse.appendFile(fullPath, content, options);
 				return { raw: result };
 			} catch (e) {
 				return handleError(e, fullPath);
@@ -64,11 +67,11 @@ export class LocalStorage extends Storage {
 	/**
 	 * Copy a file to a location.
 	 */
-	public async copy(src: string, dest: string, options?: fs.CopyOptions): Promise<Response> {
+	public async copy(src: string, dest: string, options?: fse.CopyOptions): Promise<Response> {
 		const srcPath = this._fullPath(src);
 
 		try {
-			const result = await fs.copy(srcPath, this._fullPath(dest), options);
+			const result = await fse.copy(srcPath, this._fullPath(dest), options);
 			return { raw: result };
 		} catch (e) {
 			return handleError(e, srcPath);
@@ -82,7 +85,7 @@ export class LocalStorage extends Storage {
 		const fullPath = this._fullPath(location);
 
 		try {
-			const result = await fs.unlink(this._fullPath(location));
+			const result = await fse.unlink(this._fullPath(location));
 			return { raw: result };
 		} catch (e) {
 			return handleError(e, fullPath);
@@ -92,8 +95,8 @@ export class LocalStorage extends Storage {
 	/**
 	 * Returns the driver.
 	 */
-	public driver(): typeof fs {
-		return fs;
+	public driver(): typeof fse {
+		return fse;
 	}
 
 	/**
@@ -103,7 +106,7 @@ export class LocalStorage extends Storage {
 		const fullPath = this._fullPath(location);
 
 		try {
-			const result = await fs.pathExists(fullPath);
+			const result = await fse.pathExists(fullPath);
 			return { exists: result, raw: result };
 		} catch (e) {
 			return handleError(e, fullPath);
@@ -117,7 +120,7 @@ export class LocalStorage extends Storage {
 		const fullPath = this._fullPath(location);
 
 		try {
-			const result = await fs.readFile(fullPath, encoding);
+			const result = await fse.readFile(fullPath, encoding);
 			return { content: result, raw: result };
 		} catch (e) {
 			return handleError(e, fullPath);
@@ -131,7 +134,7 @@ export class LocalStorage extends Storage {
 		const fullPath = this._fullPath(location);
 
 		try {
-			const result = await fs.readFile(fullPath);
+			const result = await fse.readFile(fullPath);
 			return { content: result, raw: result };
 		} catch (e) {
 			return handleError(e, fullPath);
@@ -145,7 +148,7 @@ export class LocalStorage extends Storage {
 		const fullPath = this._fullPath(location);
 
 		try {
-			const stat = await fs.stat(fullPath);
+			const stat = await fse.stat(fullPath);
 			return {
 				size: stat.size,
 				modified: stat.mtime,
@@ -159,8 +162,8 @@ export class LocalStorage extends Storage {
 	/**
 	 * Returns a read stream for a file location.
 	 */
-	public getStream(location: string, options?: ReadStreamOptions | string): fs.ReadStream {
-		return fs.createReadStream(this._fullPath(location), options);
+	public getStream(location: string, options?: ReadStreamOptions | string): fse.ReadStream {
+		return fse.createReadStream(this._fullPath(location), options);
 	}
 
 	/**
@@ -170,7 +173,7 @@ export class LocalStorage extends Storage {
 		const srcPath = this._fullPath(src);
 
 		try {
-			const result = await fs.move(srcPath, this._fullPath(dest));
+			const result = await fse.move(srcPath, this._fullPath(dest));
 			return { raw: result };
 		} catch (e) {
 			return handleError(e, srcPath);
@@ -180,7 +183,7 @@ export class LocalStorage extends Storage {
 	/**
 	 * Prepends content to a file.
 	 */
-	public async prepend(location: string, content: Buffer | string, options?: fs.WriteFileOptions): Promise<Response> {
+	public async prepend(location: string, content: Buffer | string, options?: fse.WriteFileOptions): Promise<Response> {
 		try {
 			const { content: actualContent } = await this.get(location, 'utf-8');
 
@@ -197,23 +200,58 @@ export class LocalStorage extends Storage {
 	public async put(
 		location: string,
 		content: Buffer | Readable | string,
-		options?: fs.WriteFileOptions
+		options?: fse.WriteFileOptions
 	): Promise<Response> {
 		const fullPath = this._fullPath(location);
 
 		try {
 			if (isReadableStream(content)) {
 				const dir = dirname(fullPath);
-				await fs.ensureDir(dir);
-				const ws = fs.createWriteStream(fullPath, options);
+				await fse.ensureDir(dir);
+				const ws = fse.createWriteStream(fullPath, options);
 				await pipeline(content, ws);
 				return { raw: undefined };
 			}
 
-			const result = await fs.outputFile(fullPath, content, options);
+			const result = await fse.outputFile(fullPath, content, options);
 			return { raw: result };
 		} catch (e) {
 			return handleError(e, fullPath);
+		}
+	}
+
+	flatList(prefix: string): AsyncIterable<FileListResponse> {
+		// no dots, empty path should end with '/', and end '/' is preserved
+		return this.flatListAbsolute(this._fullPath(prefix))
+	}
+
+	private async *flatListAbsolute(prefix: string): AsyncGenerator<FileListResponse> {
+		let prefixDirectory = (prefix[prefix.length-1] === '/') ? prefix : dirname(prefix);
+
+		try {
+			for (const file of await promisify(fs.readdir)(prefixDirectory, {withFileTypes: true, encoding: 'utf-8'})) {
+				const fileName = join(prefixDirectory, file.name);
+
+				if (fileName.substr(0, prefix.length) === prefix) {
+					if (file.isDirectory()) {
+						for await (const subFile of this.flatListAbsolute(fileName + '/')) {
+							yield subFile;
+						}
+					} else if (file.isFile()) {
+						const path = relative(this.$root, fileName);
+
+						yield {
+							path,
+						}
+					}
+				}
+			}
+		} catch (e) {
+			e = handleError(e, e.path);
+
+			if (!(e instanceof FileNotFound)) {
+				throw e;
+			}
 		}
 	}
 }

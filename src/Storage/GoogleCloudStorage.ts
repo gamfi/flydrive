@@ -9,7 +9,15 @@ import { Readable } from 'stream';
 import { Storage as GCSDriver, StorageOptions, Bucket, File } from '@google-cloud/storage';
 import Storage from './Storage';
 import { isReadableStream, pipeline } from '../utils';
-import { Response, ExistsResponse, ContentResponse, SignedUrlResponse, SignedUrlOptions, StatResponse } from '../types';
+import {
+	Response,
+	ExistsResponse,
+	ContentResponse,
+	SignedUrlResponse,
+	SignedUrlOptions,
+	StatResponse,
+	FileListResponse
+} from '../types';
 import { FileNotFound, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath } from '../Exceptions';
 
 function handleError(err: Error & { code?: number | string }, path: string): never {
@@ -206,6 +214,25 @@ export class GoogleCloudStorage extends Storage {
 		} catch (e) {
 			return handleError(e, location);
 		}
+	}
+
+	async *flatList(prefix: string): AsyncIterable<FileListResponse> {
+		let nextQuery: {} = {
+			prefix: prefix,
+			autoPaginate: false,
+		};
+
+		do {
+			const response = await this.$bucket.getFiles(nextQuery);
+			const files = response[0];
+			nextQuery = response[1];
+
+			for (const file of files) {
+				yield {
+					path: file.name,
+				}
+			}
+		} while(nextQuery)
 	}
 }
 

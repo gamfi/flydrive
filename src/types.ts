@@ -54,3 +54,8 @@ export interface StatResponse extends Response {
 	size: number;
 	modified: Date;
 }
+
+export interface FileListResponse {
+   path: string,
+}
+

@@ -7,9 +7,9 @@
 
 import { Readable } from 'stream';
 import S3, { ClientConfiguration } from 'aws-sdk/clients/s3';
-import { Storage } from '..';
+import {Storage} from '..';
 import { UnknownException, NoSuchBucket, FileNotFound } from '../Exceptions';
-import { SignedUrlOptions, Response, ExistsResponse, ContentResponse, SignedUrlResponse, StatResponse } from '../types';
+import { SignedUrlOptions, Response, ExistsResponse, ContentResponse, SignedUrlResponse, StatResponse, FileListResponse } from '../types';
 
 function handleError(err: Error, path: string, bucket: string): never {
 	switch (err.name) {
@@ -231,6 +231,27 @@ export class AmazonWebServicesS3Storage extends Storage {
 		} catch (e) {
 			return handleError(e, location, this.$bucket);
 		}
+	}
+
+	public async *flatList(prefix: string): AsyncIterable<FileListResponse> {
+		let marker: string|undefined = undefined;
+
+		do {
+			const response = await this.$driver.listObjects({
+				Bucket: this.$bucket,
+				Prefix: prefix,
+				Marker: marker,
+				MaxKeys: 1000,
+			}).promise();
+
+			marker = response.NextMarker;
+
+			for (const file of response.Contents) {
+				yield {
+					path: file.Key,
+				}
+			}
+		} while (marker);
 	}
 }
 

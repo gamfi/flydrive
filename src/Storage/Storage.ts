@@ -7,7 +7,7 @@
 
 import { Readable } from 'stream';
 import { MethodNotSupported } from '../Exceptions';
-import { Response, SignedUrlResponse, ContentResponse, ExistsResponse, SignedUrlOptions, StatResponse } from '../types';
+import { Response, SignedUrlResponse, ContentResponse, ExistsResponse, SignedUrlOptions, StatResponse, FileListResponse } from '../types';
 
 export default abstract class Storage {
 	/**
@@ -109,6 +109,12 @@ export default abstract class Storage {
 	getStream(location: string): Readable {
 		throw new MethodNotSupported('getStream', this.constructor.name);
 	}
+
+	/**
+	 * List files with given prefix
+	 * @param prefix
+	 */
+	abstract flatList(prefix: string): AsyncIterable<FileListResponse>;
 
 	/**
 	 * Returns url for a given key. Note this method doesn't

@@ -14,7 +14,15 @@ import {
     generateBlobSASQueryParameters, RestError, StorageSharedKeyCredential
 } from "@azure/storage-blob";
 import {Readable, PassThrough} from "stream";
-import {ContentResponse, DeleteResponse, ExistsResponse, Response, SignedUrlOptions, SignedUrlResponse} from "../types";
+import {
+    ContentResponse,
+    DeleteResponse,
+    ExistsResponse,
+    FileListResponse,
+    Response,
+    SignedUrlOptions,
+    SignedUrlResponse,
+} from "../types";
 import {isReadableStream} from "../utils";
 import {InvalidInput} from "../Exceptions/InvalidInput";
 import {streamToBuffer} from "../utils/streamToBuffer";
@@ -227,5 +235,15 @@ export class AzureBlockBlobStorage extends Storage
         }
 
         return new UnknownException(e, errorCode, url);
+    }
+
+    async *flatList(prefix: string): AsyncIterable<FileListResponse> {
+        const containerClient = this.$driver.getContainerClient(this.$container);
+
+        for await (const blob of containerClient.listBlobsFlat({prefix})) {
+            yield {
+                path: blob.name,
+            }
+        }
     }
 }
