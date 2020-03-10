@@ -7,6 +7,7 @@
  */
 import { Storage } from "./Storage";
 import {
+    BlobDownloadHeaders,
     BlobSASPermissions,
     BlobServiceClient,
     BlockBlobClient, ContainerClient,
@@ -18,13 +19,17 @@ import {
     DeleteResponse,
     ExistsResponse,
     FileListResponse,
+    PropertiesResponse,
+    PutOptions,
     Response,
     SignedUrlOptions,
     SignedUrlResponse,
 } from "../types";
 import {isReadableStream} from "../utils";
 import {streamToBuffer} from "../utils/streamToBuffer";
-import {AuthorizationRequired, FileNotFound, UnknownException, InvalidInput} from "../Exceptions";
+import {AuthorizationRequired, FileNotFound, InvalidInput, UnknownException} from "../Exceptions";
+import {MetadataConverter} from "../utils/MetadataConverter";
+import {BlockBlobUploadOptions} from "@azure/storage-blob/src/Clients";
 
 export interface AzureBlobStorageConfig {
     container: string;
@@ -106,6 +111,7 @@ export class AzureBlockBlobStorage extends Storage
             return {
                 raw: downloaded,
                 content: buffer,
+                properties: this.convertProperties(downloaded),
             };
         } catch (e) {
             throw this.convertError(e);
@@ -128,6 +134,17 @@ export class AzureBlockBlobStorage extends Storage
         })();
 
         return stream;
+    }
+
+    async getProperties(location: string): Promise<PropertiesResponse> {
+        const blockBlobClient = this.blockBlobClient(location);
+
+        try {
+            const props = await blockBlobClient.getProperties();
+            return this.convertProperties(props);
+        } catch (e) {
+            throw this.convertError(e);
+        }
     }
 
     async getSignedUrl(location: string, options?: SignedUrlOptions): Promise<SignedUrlResponse> {
@@ -170,20 +187,38 @@ export class AzureBlockBlobStorage extends Storage
         }
     }
 
-    async put(location: string, content: Buffer | Readable | string): Promise<Response> {
+    async put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response> {
+        if (options && options.metadata) {
+            if (!MetadataConverter.checkKeys(options.metadata)) {
+                throw new InvalidInput(
+                    'options.metadata',
+                    'put',
+                    'Metadata keys must start with lower-case latin letter, and consist only of latin letters',
+                );
+            }
+        }
+
         const blockBlobClient = this.blockBlobClient(location);
         let contentLength = 0;
         let result: Response|null = null;
+        const uploadOptions: BlockBlobUploadOptions = {
+            blobHTTPHeaders: {
+                blobContentType: options && options.contentType || 'application/octet-stream',
+                blobContentLanguage: options && options.contentLanguage,
+            },
+            // azure blob storage according to doc preserves case size, according to our tests - it does not
+            metadata: MetadataConverter.camelToSnake(options && options.metadata || {}),
+        };
 
         try {
             if (Buffer.isBuffer(content) || typeof content === "string") {
                 contentLength = Buffer.byteLength(content);
                 result = {
-                    raw: await blockBlobClient.upload(content, contentLength),
+                    raw: await blockBlobClient.upload(content, contentLength, uploadOptions),
                 };
             } else if (isReadableStream(content)) {
                 result = {
-                    raw: await blockBlobClient.uploadStream(content, undefined, undefined),
+                    raw: await blockBlobClient.uploadStream(content, undefined, undefined, uploadOptions),
                 };
             }
         } catch (e) {
@@ -218,10 +253,23 @@ export class AzureBlockBlobStorage extends Storage
         return new UnknownException(e, errorCode, url);
     }
 
+    private convertProperties(downloaded: BlobDownloadHeaders): PropertiesResponse {
+        return {
+            contentType: downloaded.contentType || 'application/octet-stream',
+            contentLength: downloaded.contentLength,
+            contentLanguage: downloaded.contentLanguage,
+            lastModified: downloaded.lastModified,
+            eTag: downloaded.etag,
+            metadata: downloaded.metadata && MetadataConverter.snakeToCamel(downloaded.metadata),
+            raw: downloaded,
+        }
+    }
+
     async *flatList(prefix: string): AsyncIterable<FileListResponse> {
-        for await (const blob of this.$containerClient.listBlobsFlat({prefix})) {
+        for await (const blob of this.$containerClient.listBlobsFlat({prefix, includeMetadata: true})) {
             yield {
                 path: blob.name,
+                properties: this.convertProperties({metadata: blob.metadata, ...blob.properties}),
             }
         }
     }

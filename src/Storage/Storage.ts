@@ -9,14 +9,20 @@ import { Readable } from 'stream';
 import { MethodNotSupported } from '../Exceptions';
 import {
 	Response,
-	SignedUrlResponse,
 	ContentResponse,
-	ExistsResponse,
-	SignedUrlOptions,
-	StatResponse,
-	FileListResponse,
 	DeleteResponse,
+	ExistsResponse,
+	FileListResponse,
+	PropertiesResponse,
+	PutOptions,
+	SignedUrlOptions,
+	SignedUrlResponse,
 } from '../types';
+
+export interface StorageConstructor<T extends Storage = Storage> {
+	new(...args: any[]): T;
+	fromConfig(config: object): T;
+}
 
 export abstract class Storage {
 	/**
@@ -45,9 +51,7 @@ export abstract class Storage {
 	/**
 	 * Returns file's size and modification date.
 	 */
-	getStat(location: string): Promise<StatResponse> {
-		throw new MethodNotSupported('getStat', this.constructor.name);
-	}
+	abstract getProperties(location: string): Promise<PropertiesResponse>;
 
 	/**
 	 * Returns the stream for the given file.
@@ -58,7 +62,7 @@ export abstract class Storage {
 	 * Creates a new file.
 	 * This method will create missing directories on the fly.
 	 */
-	abstract put(location: string, content: Buffer | Readable | string): Promise<Response>;
+	abstract put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response>;
 
 	/**
 	 * List files with given prefix

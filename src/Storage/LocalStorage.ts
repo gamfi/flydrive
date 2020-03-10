@@ -11,17 +11,19 @@ import fse from 'fs-extra';
 import fs from 'fs';
 
 import { Storage } from './Storage';
-import { FileNotFound, UnknownException, PermissionMissing, InvalidInput } from '../Exceptions';
+import { FileNotFound, InvalidInput, UnknownException, PermissionMissing } from '../Exceptions';
 import { isReadableStream, pipeline } from '../utils';
 import {
 	Response,
-	ExistsResponse,
 	ContentResponse,
-	StatResponse,
+	DeleteResponse,
+	ExistsResponse,
 	FileListResponse,
-	DeleteResponse
+	PropertiesResponse,
+	PutOptions,
 } from '../types';
 import {promisify} from "util";
+import { MetadataConverter } from "../utils/MetadataConverter";
 
 function handleError(err: Error & { code: string; path?: string }, fullPath: string): Error {
 	switch (err.code) {
@@ -36,11 +38,15 @@ function handleError(err: Error & { code: string; path?: string }, fullPath: str
 }
 
 export class LocalStorage extends Storage {
-	private $root: string;
+	private readonly $root: string;
+	private readonly $dataDirectory: string;
+	private readonly $metaDirectory: string;
 
 	constructor(config: LocalFileSystemConfig) {
 		super();
 		this.$root = resolve(config.root);
+		this.$dataDirectory = config.dataDirectory || join(this.$root, 'data');
+		this.$metaDirectory = config.metadataDirectory || join(this.$root, 'meta');
 	}
 
 	static fromConfig(config: LocalFileSystemConfig): Storage {
@@ -50,18 +56,28 @@ export class LocalStorage extends Storage {
 	/**
 	 * Returns full path to the storage root directory.
 	 */
-	private _fullPath(relativePath: string): string {
-		return join(this.$root, join('/', relativePath));
+	private dataPath(relativePath: string): string {
+		return join(this.$dataDirectory, join('/', relativePath));
+	}
+
+	/**
+	 * Returns full path to the storage root directory.
+	 */
+	private metaPath(relativePath: string): string {
+		return join(this.$metaDirectory, join('/', relativePath));
 	}
 
 	/**
 	 * Copy a file to a location.
 	 */
 	public async copy(src: string, dest: string): Promise<Response> {
-		const srcPath = this._fullPath(src);
+		const srcPath = this.dataPath(src);
 
 		try {
-			const result = await fse.copy(srcPath, this._fullPath(dest));
+			const [result] = await Promise.all([
+				fse.copy(srcPath, this.dataPath(dest)),
+				fse.copy(this.metaPath(src), this.metaPath(dest)),
+			]);
 			return { raw: result };
 		} catch (e) {
 			throw handleError(e, srcPath);
@@ -72,11 +88,14 @@ export class LocalStorage extends Storage {
 	 * Delete existing file.
 	 */
 	public async delete(location: string): Promise<DeleteResponse> {
-		const fullPath = this._fullPath(location);
+		const fullPath = this.dataPath(location);
 		let wasDeleted: boolean = true;
 
 		try {
-			await fse.unlink(fullPath);
+			await Promise.all([
+				await fse.unlink(fullPath),
+				await this.deleteMeta(location),
+			]);
 		} catch (e) {
 			e = handleError(e, location);
 
@@ -97,7 +116,7 @@ export class LocalStorage extends Storage {
 	 * Determines if a file or folder already exists.
 	 */
 	public async exists(location: string): Promise<ExistsResponse> {
-		const fullPath = this._fullPath(location);
+		const fullPath = this.dataPath(location);
 
 		try {
 			const result = await fse.pathExists(fullPath);
@@ -111,11 +130,19 @@ export class LocalStorage extends Storage {
 	 * Returns the file contents as Buffer.
 	 */
 	public async getBuffer(location: string): Promise<ContentResponse<Buffer>> {
-		const fullPath = this._fullPath(location);
+		const fullPath = this.dataPath(location);
 
 		try {
-			const result = await fse.readFile(fullPath);
-			return { content: result, raw: result };
+			const [content, properties] = await Promise.all([
+				fse.readFile(fullPath),
+				this.getProperties(location),
+			]);
+
+			return {
+				raw: undefined,
+				content,
+				properties,
+			};
 		} catch (e) {
 			throw handleError(e, location);
 		}
@@ -124,16 +151,19 @@ export class LocalStorage extends Storage {
 	/**
 	 * Returns file size in bytes.
 	 */
-	public async getStat(location: string): Promise<StatResponse> {
-		const fullPath = this._fullPath(location);
+	public async getProperties(location: string): Promise<PropertiesResponse> {
+		const fullPath = this.dataPath(location);
 
 		try {
-			const stat = await fse.stat(fullPath);
-			return {
-				size: stat.size,
-				modified: stat.mtime,
-				raw: stat,
-			};
+			const [stat, meta] = await Promise.all([fse.stat(fullPath), this.retrieveMeta(location)]);
+			return Object.assign(
+				meta,
+				{
+					contentLength: stat.size,
+					lastModified: stat.mtime,
+					raw: stat,
+				},
+			);
 		} catch (e) {
 			throw handleError(e, location);
 		}
@@ -143,17 +173,21 @@ export class LocalStorage extends Storage {
 	 * Returns a read stream for a file location.
 	 */
 	public getStream(location: string, options?: ReadStreamOptions | string): fse.ReadStream {
-		return fse.createReadStream(this._fullPath(location), options);
+		return fse.createReadStream(this.dataPath(location), options);
 	}
 
 	/**
 	 * Move file to a new location.
 	 */
 	public async move(src: string, dest: string): Promise<Response> {
-		const srcPath = this._fullPath(src);
+		const srcPath = this.dataPath(src);
 
 		try {
-			const result = await fse.move(srcPath, this._fullPath(dest));
+			const [result] = await Promise.all([
+				fse.move(srcPath, this.dataPath(dest)),
+				fse.move(this.metaPath(src), this.metaPath(dest)),
+			]);
+
 			return { raw: result };
 		} catch (e) {
 			throw handleError(e, src);
@@ -167,20 +201,41 @@ export class LocalStorage extends Storage {
 	public async put(
 		location: string,
 		content: Buffer | Readable | string,
+		options?: PutOptions,
 	): Promise<Response> {
+		if (!MetadataConverter.checkKeys(options && options.metadata || {})) {
+			throw new InvalidInput(
+				'options.metadata',
+				'put',
+				'Metadata keys must start with lower-case latin letter, and consist only of latin letters',
+			);
+		}
+
 		let result;
-		const fullPath = this._fullPath(location);
+		const fullPath = this.dataPath(location);
+		const meta = {
+			contentType: options && options.contentType || 'application/octet-stream',
+			contentLanguage: options && options.contentLanguage,
+			metadata: options && options.metadata,
+			raw: undefined,
+		};
 
 		try {
 			if (isReadableStream(content)) {
 				await fse.ensureDir(dirname(fullPath));
 				const ws = fse.createWriteStream(fullPath);
-				await pipeline(content, ws);
+				await Promise.all([
+					pipeline(content, ws),
+					this.saveMeta(location, meta),
+				]);
 
 				result = { raw: undefined };
 			} else if (Buffer.isBuffer(content) || typeof(content) === 'string') {
 				await fse.ensureDir(dirname(fullPath));
-				await fse.writeFile(fullPath, content);
+				await Promise.all([
+					fse.writeFile(fullPath, content),
+					this.saveMeta(location, meta),
+				]);
 
 				result = { raw: undefined };
 			}
@@ -191,7 +246,7 @@ export class LocalStorage extends Storage {
 		if (!result) {
 			throw new InvalidInput(
 				'content',
-				'LocalStorage#put',
+				'AzureBlobStorage#put',
 				'only Buffers, ReadableStreams and strings are supported'
 			);
 		}
@@ -201,7 +256,7 @@ export class LocalStorage extends Storage {
 
 	flatList(prefix: string): AsyncIterable<FileListResponse> {
 		// no dots, empty path should end with '/', and end '/' is preserved
-		return this.flatListAbsolute(this._fullPath(prefix))
+		return this.flatListAbsolute(this.dataPath(prefix))
 	}
 
 	private async *flatListAbsolute(prefix: string): AsyncGenerator<FileListResponse> {
@@ -217,10 +272,11 @@ export class LocalStorage extends Storage {
 							yield subFile;
 						}
 					} else if (file.isFile()) {
-						const path = relative(this.$root, fileName);
+						const path = relative(this.$dataDirectory, fileName);
 
 						yield {
 							path,
+							properties: await this.getProperties(path),
 						}
 					}
 				}
@@ -233,10 +289,43 @@ export class LocalStorage extends Storage {
 			}
 		}
 	}
+
+	private async retrieveMeta(location: string): Promise<PropertiesResponse> {
+		try {
+			return await fse.readJson(this.metaPath(location));
+		} catch (e) {
+			if (e.code !== 'ENOENT' && e.code !== 'E_FILE_NOT_FOUND') {
+				throw e;
+			}
+
+			return { contentType: 'application/octet-stream', raw: undefined};
+		}
+	}
+
+	private async saveMeta(location: string, meta: PropertiesResponse): Promise<void> {
+		const metaPath = this.metaPath(location);
+
+		await fse.mkdirp(dirname(metaPath));
+		await fse.writeJson(metaPath, meta);
+	}
+
+	private async deleteMeta(location: string): Promise<void> {
+		const metaPath = this.metaPath(location);
+
+		try {
+			await fse.unlink(metaPath);
+		} catch (e) {
+			if (e.code !== 'ENOENT' && e.code !== 'E_FILE_NOT_FOUND') {
+				throw e;
+			}
+		}
+	}
 }
 
 export type LocalFileSystemConfig = {
 	root: string;
+	metadataDirectory?: string;
+	dataDirectory?: string;
 };
 
 export type ReadStreamOptions = {

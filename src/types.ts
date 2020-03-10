@@ -20,6 +20,13 @@ export interface StorageManagerConfig {
 	disks?: StorageManagerDiskConfig;
 }
 
+export interface PutOptions {
+	contentType?: string,
+	contentLanguage?: string;
+	// key should match /^[a-zA-Z]+$/ for interoperability
+	metadata?: {[key: string]: string},
+}
+
 export interface SignedUrlOptions {
 	/**
 	 * Expiration time of the URL.
@@ -43,17 +50,24 @@ export interface ExistsResponse extends Response {
 
 export interface ContentResponse<T> extends Response {
 	content: T;
+	properties: PropertiesResponse;
 }
 
 export interface SignedUrlResponse extends Response {
 	signedUrl: string;
 }
 
-export interface StatResponse extends Response {
-	size: number;
-	modified: Date;
+export interface PropertiesResponse extends Response{
+	contentType: string;
+	contentLanguage?: string,
+	contentLength?: number;
+	lastModified?: Date;
+	eTag?: string,
+	// key should match /^[a-z]+([A-Z][a-z]+)*$/ for interoperability
+	metadata?: {[key: string]: string},
 }
 
 export interface FileListResponse {
-   path: string,
+	path: string,
+	properties: PropertiesResponse,
 }

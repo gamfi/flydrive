@@ -6,20 +6,22 @@
  */
 
 import { Readable } from 'stream';
-import {StorageOptions, Bucket, File} from '@google-cloud/storage';
+import {StorageOptions, Bucket, File, CreateWriteStreamOptions} from '@google-cloud/storage';
 import { Storage } from './Storage';
 import { isReadableStream, pipeline } from '../utils';
 import {
 	Response,
-	ExistsResponse,
 	ContentResponse,
+	DeleteResponse,
+	ExistsResponse,
+	FileListResponse,
+	PropertiesResponse,
+	PutOptions,
 	SignedUrlResponse,
 	SignedUrlOptions,
-	StatResponse,
-	FileListResponse,
-	DeleteResponse,
 } from '../types';
-import { FileNotFound, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath, InvalidInput } from '../Exceptions';
+import { FileNotFound, InvalidInput, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath } from '../Exceptions';
+import {MetadataConverter} from "../utils/MetadataConverter";
 
 function handleError(err: Error & { code?: number | string }, path: string): Error {
 	switch (err.code) {
@@ -105,8 +107,14 @@ export class GoogleCloudStorage extends Storage {
 	 */
 	public async getBuffer(location: string): Promise<ContentResponse<Buffer>> {
 		try {
-			const result = await this._file(location).download();
-			return { content: result[0], raw: result };
+			const file = await this._file(location);
+			const result = await file.download();
+
+			return {
+				content: result[0],
+				properties: this.convertProperties(file.metadata),
+				raw: result,
+			};
 		} catch (e) {
 			throw handleError(e, location);
 		}
@@ -131,14 +139,9 @@ export class GoogleCloudStorage extends Storage {
 	/**
 	 * Returns file's size and modification date.
 	 */
-	public async getStat(location: string): Promise<StatResponse> {
+	public async getProperties(location: string): Promise<PropertiesResponse> {
 		try {
-			const result = await this._file(location).getMetadata();
-			return {
-				size: Number(result[0].size),
-				modified: new Date(result[0].updated),
-				raw: result,
-			};
+			return this.convertProperties((await this._file(location).getMetadata())[0]);
 		} catch (e) {
 			throw handleError(e, location);
 		}
@@ -179,18 +182,35 @@ export class GoogleCloudStorage extends Storage {
 	 * Creates a new file.
 	 * This method will create missing directories on the fly.
 	 */
-	public async put(location: string, content: Buffer | Readable | string): Promise<Response> {
-		const file = this._file(location);
+	public async put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response> {
+		if (options && options.metadata) {
+			if (!MetadataConverter.checkKeys(options.metadata)) {
+				throw new InvalidInput(
+					'options.metadata',
+					'put',
+					'Metadata keys must start with lower-case latin letter, and consist only of latin letters',
+				);
+			}
+		}
+
 		let result;
+		const file = this._file(location);
+		const uploadOptions: CreateWriteStreamOptions = {
+			contentType: options && options.contentType || 'application/octet-stream',
+			metadata: {
+				metadata: (options && options.metadata || {}),
+				contentLanguage: options && options.contentLanguage,
+			}
+		};
 
 		try {
 			if (isReadableStream(content)) {
-				const destStream = file.createWriteStream();
+				const destStream = file.createWriteStream(uploadOptions);
 				await pipeline(content, destStream);
 				result = { raw: undefined };
 			} else if (Buffer.isBuffer(content) || typeof(content) === 'string') {
 				result = {
-					raw: await file.save(content, {resumable: false})
+					raw: await file.save(content, {resumable: false, ...uploadOptions})
 				};
 			}
 		} catch (e) {
@@ -208,6 +228,18 @@ export class GoogleCloudStorage extends Storage {
 		return result;
 	}
 
+	private convertProperties(metadata: any): PropertiesResponse {
+		return {
+			contentType: metadata.contentType || 'application/octet-stream',
+			contentLength: metadata.size && Number(metadata.size),
+			contentLanguage: metadata.contentLanguage || null,
+			lastModified: metadata.updated && new Date(metadata.updated),
+			eTag: metadata.etag,
+			metadata: metadata.metadata,
+			raw: metadata,
+		};
+	}
+
 	async *flatList(prefix: string): AsyncIterable<FileListResponse> {
 		let nextQuery: {} = {
 			prefix: prefix,
@@ -222,6 +254,7 @@ export class GoogleCloudStorage extends Storage {
 			for (const file of files) {
 				yield {
 					path: file.name,
+					properties: this.convertProperties(file.metadata),
 				}
 			}
 		} while(nextQuery)

@@ -7,17 +7,20 @@
 
 import { Readable } from 'stream';
 import S3, { ClientConfiguration } from 'aws-sdk/clients/s3';
-import {UnknownException, NoSuchBucket, FileNotFound, PermissionMissing} from '../Exceptions';
+import {UnknownException, NoSuchBucket, FileNotFound, InvalidInput, PermissionMissing} from '../Exceptions';
 import {
 	ContentResponse,
 	DeleteResponse,
 	ExistsResponse,
-	StatResponse,
 	FileListResponse,
+	PropertiesResponse,
+	PutOptions,
 	Response,
 	SignedUrlOptions,
 	SignedUrlResponse,
 } from '../types';
+import { MetadataConverter } from '../utils/MetadataConverter'
+import { isReadableStream } from "../utils";
 import { Storage } from "./Storage";
 
 function handleError(err: Error, path: string, bucket: string): Error {
@@ -119,7 +122,11 @@ export class AmazonWebServicesS3Storage extends Storage {
 			// S3.getObject returns a Buffer in Node.js
 			const body = result.Body as Buffer;
 
-			return { content: body, raw: result };
+			return {
+				content: body,
+				raw: result,
+				properties: this.convertHeaders(result),
+			};
 		} catch (e) {
 			throw handleError(e, location, this.$bucket);
 		}
@@ -148,16 +155,11 @@ export class AmazonWebServicesS3Storage extends Storage {
 	/**
 	 * Returns file's size and modification date.
 	 */
-	public async getStat(location: string): Promise<StatResponse> {
-		const params = { Key: location, Bucket: this.$bucket };
-
+	public async getProperties(location: string): Promise<PropertiesResponse> {
 		try {
-			const result = await this.$driver.headObject(params).promise();
-			return {
-				size: result.ContentLength as number,
-				modified: result.LastModified as Date,
-				raw: result,
-			};
+			const result = await this.$driver.headObject({ Key: location, Bucket: this.$bucket }).promise();
+
+			return this.convertHeaders(result);
 		} catch (e) {
 			throw handleError(e, location, this.$bucket);
 		}
@@ -200,8 +202,34 @@ export class AmazonWebServicesS3Storage extends Storage {
 	 * Creates a new file.
 	 * This method will create missing directories on the fly.
 	 */
-	public async put(location: string, content: Buffer | Readable | string): Promise<Response> {
-		const params = { Key: location, Body: content, Bucket: this.$bucket };
+	public async put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response> {
+		if (options && options.metadata) {
+			if (!MetadataConverter.checkKeys(options.metadata)) {
+				throw new InvalidInput(
+					'options.metadata',
+					'put',
+					'Metadata keys must start with lower-case latin letter, and consist only of latin letters',
+				);
+			}
+		}
+
+		if (!isReadableStream(content) && !Buffer.isBuffer(content) && typeof(content) !== "string") {
+			throw new InvalidInput(
+				'content',
+				'put',
+				'only Buffers, ReadableStreams and strings are supported'
+			);
+		}
+
+		const params = {
+			Key: location,
+			Body: content,
+			Bucket: this.$bucket,
+			ContentType: options && options.contentType,
+			ContentLanguage:  options && options.contentLanguage,
+			Metadata: options && options.metadata && MetadataConverter.camelToKebab(options.metadata)
+		};
+
 		try {
 			const result = await this.$driver.upload(params).promise();
 			return { raw: result };
@@ -226,9 +254,22 @@ export class AmazonWebServicesS3Storage extends Storage {
 			for (const file of response.Contents) {
 				yield {
 					path: file.Key,
+					properties: await this.getProperties(file.Key),
 				}
 			}
 		} while (marker);
+	}
+
+	private convertHeaders(headers: S3.HeadObjectOutput): PropertiesResponse {
+		return {
+			contentType: headers.ContentType || 'application/octet-stream',
+			contentLength: headers.ContentLength && Number(headers.ContentLength),
+			contentLanguage: headers.ContentLanguage,
+			lastModified: headers.LastModified,
+			eTag: headers.ETag,
+			metadata: MetadataConverter.kebabToCamel(headers.Metadata || {}),
+			raw: headers,
+		};
 	}
 }
 

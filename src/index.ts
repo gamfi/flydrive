@@ -1,3 +1,3 @@
-export { default as Storage } from './Storage/Storage';
-export { default as StorageManager } from './StorageManager';
+export * from './StorageManager';
+export * from './Storage';
 export * from './types';
