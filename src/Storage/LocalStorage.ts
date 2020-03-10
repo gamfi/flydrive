@@ -6,7 +6,7 @@
  */
 
 import { Readable } from 'stream';
-import { dirname, join, resolve, relative } from 'path';
+import {dirname, join, resolve, relative, normalize} from 'path';
 import fse from 'fs-extra';
 import fs from 'fs';
 
@@ -45,8 +45,19 @@ export class LocalStorage extends Storage {
 	constructor(config: LocalFileSystemConfig) {
 		super();
 		this.$root = resolve(config.root);
-		this.$dataDirectory = config.dataDirectory || join(this.$root, 'data');
-		this.$metaDirectory = config.metadataDirectory || join(this.$root, 'meta');
+		this.$dataDirectory = resolve(config.dataDirectory || join(this.$root, 'data'));
+		this.$metaDirectory = resolve(config.metadataDirectory || join(this.$root, 'meta'));
+
+		if (
+			this.isSubDir(this.$metaDirectory, this.$dataDirectory)
+			|| this.isSubDir(this.$dataDirectory, this.$metaDirectory)
+		) {
+			throw new InvalidInput(
+				'config.metaDirectory',
+				'LocalStorage',
+				'metaDirectory and dataDirectory must not be subdirectories of each other'
+			);
+		}
 	}
 
 	static fromConfig(config: LocalFileSystemConfig): Storage {
@@ -95,6 +106,11 @@ export class LocalStorage extends Storage {
 			await Promise.all([
 				await fse.unlink(fullPath),
 				await this.deleteMeta(location),
+			]);
+
+			await Promise.all([
+				this.cleanUpEmptyDirectories(dirname(fullPath)),
+				this.cleanUpEmptyDirectories(dirname(this.metaPath(location))),
 			]);
 		} catch (e) {
 			e = handleError(e, location);
@@ -186,6 +202,11 @@ export class LocalStorage extends Storage {
 			const [result] = await Promise.all([
 				fse.move(srcPath, this.dataPath(dest)),
 				fse.move(this.metaPath(src), this.metaPath(dest)),
+			]);
+
+			await Promise.all([
+				this.cleanUpEmptyDirectories(dirname(srcPath)),
+				this.cleanUpEmptyDirectories(dirname(this.metaPath(src))),
 			]);
 
 			return { raw: result };
@@ -288,6 +309,27 @@ export class LocalStorage extends Storage {
 				throw e;
 			}
 		}
+	}
+
+	private async cleanUpEmptyDirectories(directoryRealPath: string): Promise<void> {
+		if (
+			this.isSubDir(this.$dataDirectory, directoryRealPath)
+			|| this.isSubDir(this.$metaDirectory, directoryRealPath)
+		) {
+			if (!(await promisify(fs.readdir)(directoryRealPath)).length) {
+				// TODO: handle error if there was a race, and dir is not empty
+				await fse.rmdir(directoryRealPath);
+				await this.cleanUpEmptyDirectories(dirname(directoryRealPath));
+			}
+		}
+	}
+
+	private isSubDir(parentDirectory: string, childDirectory: string) {
+		parentDirectory = join(parentDirectory, '/');
+		childDirectory = normalize(childDirectory);
+
+		return parentDirectory !== childDirectory
+			&& childDirectory.startsWith(parentDirectory);
 	}
 
 	private async retrieveMeta(location: string): Promise<PropertiesResponse> {
