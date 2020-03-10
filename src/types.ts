@@ -4,12 +4,11 @@
  * @license MIT
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  */
+import { StorageConstructor } from "./Storage/Storage";
 
 export interface StorageManagerDiskConfig {
-	[key: string]: {
-		driver: string;
-		[key: string]: unknown;
-	};
+	driver: string | StorageConstructor;
+	[key: string]: unknown;
 }
 
 export interface StorageManagerConfig {
@@ -17,7 +16,7 @@ export interface StorageManagerConfig {
 	 * The default disk returned by `disk()`.
 	 */
 	default?: string;
-	disks?: StorageManagerDiskConfig;
+	disks: {[key: string]: StorageManagerDiskConfig};
 }
 
 export interface PutOptions {
