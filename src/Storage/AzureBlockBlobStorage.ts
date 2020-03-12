@@ -13,7 +13,7 @@ import {
     BlockBlobClient, ContainerClient,
     generateBlobSASQueryParameters, RestError, StorageSharedKeyCredential
 } from "@azure/storage-blob";
-import {Readable, PassThrough} from "stream";
+import {PassThrough, Readable} from "stream";
 import {
     ContentResponse,
     DeleteResponse,
@@ -106,7 +106,7 @@ export class AzureBlockBlobStorage extends Storage
         try {
             const downloaded = await blockBlobClient.download();
             const buffer = Buffer.alloc(downloaded.contentLength || 0);
-            await streamToBuffer(downloaded.readableStreamBody as Readable, buffer, 0, buffer.length);
+            await streamToBuffer(downloaded.readableStreamBody as NodeJS.ReadableStream, buffer, 0, buffer.length);
 
             return {
                 raw: downloaded,
@@ -118,13 +118,13 @@ export class AzureBlockBlobStorage extends Storage
         }
     }
 
-    getStream(location: string): Readable {
+    getStream(location: string): NodeJS.ReadableStream {
         const stream = new PassThrough();
 
         (async (): Promise<void> => {
             try {
                 const blockBlobClient = this.blockBlobClient(location);
-                const downloaded = (await blockBlobClient.download()).readableStreamBody as Readable;
+                const downloaded = (await blockBlobClient.download()).readableStreamBody as NodeJS.ReadableStream;
 
                 downloaded.pipe(stream);
                 downloaded.on('error', (e) => stream.destroy(this.convertError(e)));
@@ -187,7 +187,7 @@ export class AzureBlockBlobStorage extends Storage
         }
     }
 
-    async put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response> {
+    async put(location: string, content: Buffer | NodeJS.ReadableStream | string, options?: PutOptions): Promise<Response> {
         if (options && options.metadata) {
             if (!MetadataConverter.checkKeys(options.metadata)) {
                 throw new InvalidInput(
@@ -218,7 +218,7 @@ export class AzureBlockBlobStorage extends Storage
                 };
             } else if (isReadableStream(content)) {
                 result = {
-                    raw: await blockBlobClient.uploadStream(content, undefined, undefined, uploadOptions),
+                    raw: await blockBlobClient.uploadStream(content as Readable, undefined, undefined, uploadOptions),
                 };
             }
         } catch (e) {

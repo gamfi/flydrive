@@ -1,7 +1,5 @@
-import {Readable} from "stream";
-
 export async function streamToString(
-    stream: Readable,
+    stream: NodeJS.ReadableStream,
     encoding?: string
 ): Promise<string> {
     return new Promise<string>((resolve, reject) => {

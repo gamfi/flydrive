@@ -1,4 +1,4 @@
-import { Readable, pipeline as nodePipeline } from 'stream';
+import { pipeline as nodePipeline } from 'stream';
 import { promisify } from 'util';
 
 /**
@@ -12,7 +12,7 @@ import { promisify } from 'util';
  * Returns a boolean indication if stream param
  * is a readable stream or not.
  */
-export function isReadableStream(stream: any): stream is Readable {
+export function isReadableStream(stream: any): stream is NodeJS.ReadableStream {
 	return (
 		stream !== null &&
 		typeof stream === 'object' &&

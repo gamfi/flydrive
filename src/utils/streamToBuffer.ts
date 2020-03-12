@@ -1,7 +1,5 @@
-import {Readable} from "stream";
-
 export async function streamToBuffer(
-    stream: Readable,
+    stream: NodeJS.ReadableStream,
     buffer: Buffer,
     offset: number,
     end: number,

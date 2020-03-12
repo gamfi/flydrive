@@ -5,7 +5,6 @@
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  */
 
-import { Readable } from 'stream';
 import { MethodNotSupported } from '../Exceptions';
 import {
 	Response,
@@ -56,13 +55,13 @@ export abstract class Storage {
 	/**
 	 * Returns the stream for the given file.
 	 */
-	abstract getStream(location: string): Readable;
+	abstract getStream(location: string): NodeJS.ReadableStream;
 
 	/**
 	 * Creates a new file.
 	 * This method will create missing directories on the fly.
 	 */
-	abstract put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response>;
+	abstract put(location: string, content: Buffer | NodeJS.ReadableStream | string, options?: PutOptions): Promise<Response>;
 
 	/**
 	 * List files with given prefix

@@ -5,7 +5,6 @@
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  */
 
-import { Readable } from 'stream';
 import {StorageOptions, Bucket, File, CreateWriteStreamOptions} from '@google-cloud/storage';
 import { Storage } from './Storage';
 import { isReadableStream, pipeline } from '../utils';
@@ -150,7 +149,7 @@ export class GoogleCloudStorage extends Storage {
 	/**
 	 * Returns the stream for the given file.
 	 */
-	public getStream(location: string): Readable {
+	public getStream(location: string): NodeJS.ReadableStream {
 		return this._file(location).createReadStream();
 	}
 
@@ -182,7 +181,7 @@ export class GoogleCloudStorage extends Storage {
 	 * Creates a new file.
 	 * This method will create missing directories on the fly.
 	 */
-	public async put(location: string, content: Buffer | Readable | string, options?: PutOptions): Promise<Response> {
+	public async put(location: string, content: Buffer | NodeJS.ReadableStream | string, options?: PutOptions): Promise<Response> {
 		if (options && options.metadata) {
 			if (!MetadataConverter.checkKeys(options.metadata)) {
 				throw new InvalidInput(

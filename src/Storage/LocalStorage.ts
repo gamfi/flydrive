@@ -5,7 +5,6 @@
  * @copyright Slynova - Romain Lanz <romain.lanz@slynova.ch>
  */
 
-import { Readable } from 'stream';
 import {dirname, join, resolve, relative, normalize} from 'path';
 import fse from 'fs-extra';
 import fs from 'fs';
@@ -188,7 +187,7 @@ export class LocalStorage extends Storage {
 	/**
 	 * Returns a read stream for a file location.
 	 */
-	public getStream(location: string, options?: ReadStreamOptions | string): fse.ReadStream {
+	public getStream(location: string, options?: ReadStreamOptions | string): NodeJS.ReadableStream {
 		return fse.createReadStream(this.dataPath(location), options);
 	}
 
@@ -221,7 +220,7 @@ export class LocalStorage extends Storage {
 	 */
 	public async put(
 		location: string,
-		content: Buffer | Readable | string,
+		content: Buffer | NodeJS.ReadableStream | string,
 		options?: PutOptions,
 	): Promise<Response> {
 		if (!MetadataConverter.checkKeys(options && options.metadata || {})) {
