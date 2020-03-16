@@ -6,7 +6,7 @@
  */
 
 import { Readable } from 'stream';
-import {StorageOptions, Bucket, File, CreateWriteStreamOptions} from '@google-cloud/storage';
+import {Bucket, File, CreateWriteStreamOptions} from '@google-cloud/storage';
 import { Storage } from './Storage';
 import { isReadableStream, pipeline } from '../utils';
 import {
@@ -18,9 +18,15 @@ import {
 	PropertiesResponse,
 	FileListResponse, PutOptions, DeleteResponse
 } from '../types';
-import { FileNotFound, PermissionMissing, UnknownException, AuthorizationRequired, WrongKeyPath } from '../Exceptions';
+import {
+	FileNotFound,
+	PermissionMissing,
+	UnknownException,
+	AuthorizationRequired,
+	WrongKeyPath,
+	InvalidInput
+} from '../Exceptions';
 import {MetadataConverter} from "../utils/MetadataConverter";
-import {InvalidInput} from "../Exceptions/InvalidInput";
 
 function handleError(err: Error & { code?: number | string }, path: string): Error {
 	switch (err.code) {
@@ -38,7 +44,7 @@ function handleError(err: Error & { code?: number | string }, path: string): Err
 }
 
 export class GoogleCloudStorage extends Storage {
-	public constructor(private readonly $bucket: Bucket) {
+	private constructor(private readonly $bucket: Bucket) {
 		super();
 	}
 
@@ -260,6 +266,48 @@ export class GoogleCloudStorage extends Storage {
 	}
 }
 
-export interface GoogleCloudStorageConfig extends StorageOptions {
+export interface GoogleCloudStorageConfig {
 	bucket: string;
+	autoRetry?: boolean;
+	maxRetries?: number;
+	promise?: typeof Promise;
+	apiEndpoint?: string;
+	keyFilename?: string;
+	keyFile?: string;
+	credentials?: CredentialBody;
+	clientOptions?: JWTOptions | OAuth2ClientOptions | UserRefreshClientOptions;
+	scopes?: string | string[];
+	projectId?: string;
+}
+
+export interface CredentialBody {
+	client_email?: string;
+	private_key?: string;
+}
+
+export interface JWTOptions extends RefreshOptions {
+	email?: string;
+	keyFile?: string;
+	key?: string;
+	keyId?: string;
+	scopes?: string | string[];
+	subject?: string;
+	additionalClaims?: {};
+}
+
+export interface OAuth2ClientOptions extends RefreshOptions {
+	clientId?: string;
+	clientSecret?: string;
+	redirectUri?: string;
+}
+
+export interface UserRefreshClientOptions extends RefreshOptions {
+	clientId?: string;
+	clientSecret?: string;
+	refreshToken?: string;
+}
+
+export interface RefreshOptions {
+	eagerRefreshThresholdMillis?: number;
+	forceRefreshOnFailure?: boolean;
 }

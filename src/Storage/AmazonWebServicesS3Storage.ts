@@ -6,7 +6,7 @@
  */
 
 import { Readable } from 'stream';
-import S3, { ClientConfiguration } from 'aws-sdk/clients/s3';
+import S3 from 'aws-sdk/clients/s3';
 import {UnknownException, NoSuchBucket, FileNotFound, InvalidInput, PermissionMissing} from '../Exceptions';
 import {
 	ContentResponse,
@@ -22,6 +22,8 @@ import {
 import { MetadataConverter } from '../utils/MetadataConverter'
 import { isReadableStream } from "../utils";
 import { Storage } from "./Storage";
+import {Agent as httpAgent} from "http";
+import {Agent as httpsAgent} from "https";
 
 function handleError(err: Error, path: string, bucket: string): Error {
 	switch (err.name) {
@@ -37,7 +39,7 @@ function handleError(err: Error, path: string, bucket: string): Error {
 }
 
 export class AmazonWebServicesS3Storage extends Storage {
-	constructor(protected readonly $driver: S3, protected readonly $bucket: string) {
+	private constructor(private readonly $driver: S3, protected readonly $bucket: string) {
 		super();
 	}
 
@@ -281,8 +283,75 @@ export class AmazonWebServicesS3Storage extends Storage {
 	}
 }
 
-export interface AWSS3Config extends ClientConfiguration {
+export interface AWSS3Config {
 	key: string;
 	secret: string;
 	bucket: string;
+	endpoint?: string;
+	params?: {
+		[key: string]: any;
+	};
+	computeChecksums?: boolean;
+	convertResponseTypes?: boolean;
+	correctClockSkew?: boolean;
+	customUserAgent?: string;
+	credentials?: AWSCredentials|null;
+	credentialProvider?: AWSCredentialProviderChain;
+	httpOptions?: {
+		proxy?: string;
+		agent?: httpAgent | httpsAgent;
+		connectTimeout?: number;
+		timeout?: number;
+		xhrAsync?: boolean;
+		xhrWithCredentials?: boolean;
+	};
+	logger?: {
+		write?: (...any) => void;
+		log?: (...any) => void;
+	};
+	maxRedirects?: number;
+	maxRetries?: number;
+	paramValidation?: boolean | {
+		min?: boolean;
+		max?: boolean;
+		pattern?: boolean;
+		enum?: boolean;
+	};
+	region?: string;
+	retryDelayOptions?: {
+		base?: number;
+		customBackoff?: (retryCount: number, err?: Error) => number;
+	};
+	s3BucketEndpoint?: boolean;
+	s3DisableBodySigning?: boolean;
+	s3ForcePathStyle?: boolean;
+	s3UsEast1RegionalEndpoint?: "regional"|"legacy";
+	s3UseArnRegion?: boolean;
+	signatureCache?: boolean;
+	signatureVersion?: "v2"|"v3"|"v4"|string;
+	sslEnabled?: boolean;
+	systemClockOffset?: number;
+	useAccelerateEndpoint?: boolean;
+	dynamoDbCrc32?: boolean;
+	endpointDiscoveryEnabled?: boolean;
+	endpointCacheSize?: number;
+	hostPrefixEnabled?: boolean;
+	stsRegionalEndpoints?: "legacy"|"regional";
+	useDualstack?: boolean;
+	apiVersion?: "2006-03-01"|"latest"|string;
 }
+
+export interface AWSCredentials {
+	accessKeyId: string
+	secretAccessKey: string
+	sessionToken?: string
+	expired?: boolean;
+	expireTime?: Date;
+}
+
+export interface AWSCredentialProviderChain {
+	resolve(callback:(err: any, credentials: AWSCredentials) => void): AWSCredentialProviderChain;
+	resolvePromise(): Promise<AWSCredentials>;
+	providers: AWSCredentials[]|(() => AWSCredentials)[];
+}
+

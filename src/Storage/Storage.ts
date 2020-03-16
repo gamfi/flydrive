@@ -18,7 +18,6 @@ import {
 } from '../types';
 
 export interface StorageConstructor<T extends Storage = Storage> {
-	new(...args: any[]): T;
 	fromConfig(config: object): T;
 }
 

@@ -3,9 +3,9 @@
 </p>
 
 <p align="center">
-  <a href="https://www.npmjs.com/package/@slynova/flydrive"><img src="https://img.shields.io/npm/dm/@slynova/flydrive.svg?style=flat-square" alt="Download"></a>
-  <a href="https://www.npmjs.com/package/@slynova/flydrive"><img src="https://img.shields.io/npm/v/@slynova/flydrive.svg?style=flat-square" alt="Version"></a>
-  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/npm/l/@slynova/flydrive.svg?style=flat-square" alt="License"></a>
+  <a href="https://www.npmjs.com/package/@pdspicer/flydrive"><img src="https://img.shields.io/npm/dm/@pdspicer/flydrive.svg?style=flat-square" alt="Download"></a>
+  <a href="https://www.npmjs.com/package/@pdspicer/flydrive"><img src="https://img.shields.io/npm/v/@pdspicer/flydrive.svg?style=flat-square" alt="Version"></a>
+  <a href="https://opensource.org/licenses/MIT"><img src="https://img.shields.io/npm/l/@pdspicer/flydrive.svg?style=flat-square" alt="License"></a>
 </p>
 
 `flydrive` is a framework-agnostic package which provides a powerful wrapper to manage file Storage in [Node.js](https://nodejs.org).
@@ -27,16 +27,16 @@ This package is available in the npm registry.
 It can easily be installed with `npm` or `yarn`.
 
 ```bash
-$ npm i @slynova/flydrive
+$ npm i @pdspicer/flydrive
 # or
-$ yarn add @slynova/flydrive
+$ yarn add @pdspicer/flydrive
 ```
 
 When you require the package in your file, it will give you access to the `StorageManager` class.
 This class is a facade for the package and should be instantiated with a [configuration object](https://github.com/Slynova-Org/flydrive/blob/master/test/stubs/config.ts).
 
 ```javascript
-const { StorageManager } = require('@slynova/flydrive');
+const { StorageManager } = require('@pdspicer/flydrive');
 const storage = new StorageManager(config);
 ```
 
@@ -62,7 +62,7 @@ storage.disk('local').getSignedUrl();
 Since we are using TypeScript, you can make use of casting to get the real interface:
 
 ```typescript
-import { LocalFileSystem } from '@slynova/flydrive';
+import { LocalFileSystem } from '@pdspicer/flydrive';
 
 storage.disk<LocalFileSystem>('local');
 ```

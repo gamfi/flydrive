@@ -24,7 +24,7 @@ import {
 } from '../types';
 import {promisify} from "util";
 import {MetadataConverter} from "../utils/MetadataConverter";
-import {InvalidInput} from "../Exceptions/InvalidInput";
+import {InvalidInput} from "../Exceptions";
 
 function handleError(err: Error & { code: string; path?: string }, fullPath: string): Error {
 	switch (err.code) {
@@ -46,8 +46,8 @@ export class LocalStorage extends Storage {
 	constructor(config: LocalFileSystemConfig) {
 		super();
 		this.$root = resolve(config.root);
-		this.$dataDirectory = config.dataDirectory || join(this.$root, 'data');
-		this.$metaDirectory = config.metadataDirectory || join(this.$root, 'meta');
+		this.$dataDirectory = config.dataDirectory ? resolve(config.dataDirectory) : join(this.$root, 'data');
+		this.$metaDirectory = config.metadataDirectory ? resolve(config.metadataDirectory) : join(this.$root, 'meta');
 	}
 
 	static fromConfig(config: LocalFileSystemConfig): Storage {

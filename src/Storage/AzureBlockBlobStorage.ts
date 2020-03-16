@@ -6,12 +6,10 @@
  * @author Christopher Chrapka <krzysztof.chrapka gamfi pl>
  */
 import { Storage } from "./Storage";
-import {
+import AzureStorageBlob, {
     BlobDownloadHeaders,
-    BlobSASPermissions,
-    BlobServiceClient,
     BlockBlobClient, ContainerClient,
-    generateBlobSASQueryParameters, RestError, StorageSharedKeyCredential
+    RestError, StorageSharedKeyCredential
 } from "@azure/storage-blob";
 import {Readable, PassThrough} from "stream";
 import {
@@ -24,9 +22,8 @@ import {
     SignedUrlResponse
 } from "../types";
 import {isReadableStream} from "../utils";
-import {InvalidInput} from "../Exceptions/InvalidInput";
 import {streamToBuffer} from "../utils/streamToBuffer";
-import {AuthorizationRequired, FileNotFound, UnknownException} from "../Exceptions";
+import {AuthorizationRequired, FileNotFound, UnknownException, InvalidInput} from "../Exceptions";
 import {MetadataConverter} from "../utils/MetadataConverter";
 import {BlockBlobUploadOptions} from "@azure/storage-blob/src/Clients";
 
@@ -37,13 +34,24 @@ export interface AzureBlobStorageConfig {
 
 export class AzureBlockBlobStorage extends Storage
 {
-    constructor(private readonly $containerClient: ContainerClient) {
+    private static _azure: typeof AzureStorageBlob;
+
+    private static get AzureStorageBlob () {
+        if (this._azure) return this._azure;
+        this._azure = require('@azure/storage-blob');
+        return this._azure;
+    }
+    private get AzureStorageBlob () {
+        return AzureBlockBlobStorage.AzureStorageBlob;
+    }
+
+    private constructor(private readonly $containerClient: ContainerClient) {
         super();
     }
 
     static fromConfig(config: AzureBlobStorageConfig): AzureBlockBlobStorage {
         return new AzureBlockBlobStorage(
-            BlobServiceClient
+            this.AzureStorageBlob.BlobServiceClient
                 .fromConnectionString(config.connectionString)
                 .getContainerClient(config.container),
         );
@@ -153,11 +161,11 @@ export class AzureBlockBlobStorage extends Storage
         const expiresOn = new Date(new Date().valueOf() + expiry * 1000);
         const client = this.blockBlobClient(location);
 
-        const token = await generateBlobSASQueryParameters(
+        const token = await this.AzureStorageBlob.generateBlobSASQueryParameters(
             {
                 containerName: container,
                 blobName: location,
-                permissions: BlobSASPermissions.parse("r"), // Required
+                permissions: this.AzureStorageBlob.BlobSASPermissions.parse("r"), // Required
                 startsOn, // Required
                 expiresOn, // Optional
             },

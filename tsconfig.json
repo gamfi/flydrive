@@ -2,7 +2,6 @@
   "include": ["src/**/*"],
   "exclude": ["node_modules"],
   "compilerOptions": {
-    "allowSyntheticDefaultImports": true,
     "declaration": true,
     "esModuleInterop": true,
     "lib": ["es2017", "dom"],
@@ -13,6 +12,6 @@
     "outDir": "build",
     "removeComments": false,
     "strictNullChecks": true,
-    "target": "es2017",
+    "target": "es2017"
   }
 }

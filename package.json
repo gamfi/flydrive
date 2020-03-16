@@ -1,6 +1,6 @@
 {
-  "name": "@slynova/flydrive",
-  "version": "1.0.0-0",
+  "name": "flydrive-manager",
+  "version": "1.0.5",
   "description": "Flexible and Fluent way to manage storage in Node.js.",
   "main": "./build/index.js",
   "license": "MIT",
@@ -20,7 +20,8 @@
   "contributors": [
     "Harminder Virk <virk@adonisjs.com>",
     "Michaël Zasso <targos@pm.me>",
-    "Krzysztof Chrapka <krzysztof.chrapka gamfi pl>"
+    "Krzysztof Chrapka <krzysztof.chrapka gamfi pl>",
+    "Paul Spicer <pdspicer@gmail.com>"
   ],
   "files": [
     "build"
