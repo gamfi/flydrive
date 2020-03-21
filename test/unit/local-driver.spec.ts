@@ -6,7 +6,7 @@
  */
 import path from 'path';
 
-import { LocalStorage } from "../../src/Storage/LocalStorage";
+import { LocalStorage } from '../../src/Storage';
 import { runGenericStorageSpec } from "../stubs/storage.generic";
 import { MethodNotSupported } from "../../src/Exceptions";
 

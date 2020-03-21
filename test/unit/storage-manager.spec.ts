@@ -7,8 +7,8 @@
 
 import { resolve } from 'path';
 
-import { StorageManager } from '../../src/StorageManager';
-import { LocalStorage } from '../../src/Storage/LocalStorage';
+import { StorageManager } from '../../src';
+import { LocalStorage } from '../../src/Storage';
 import { Storage } from "../../src/Storage/Storage";
 
 describe('Storage Manager', () => {

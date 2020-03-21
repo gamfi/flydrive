@@ -2,7 +2,7 @@ import crypto from 'crypto';
 import fs from 'fs';
 import uuid from 'uuid';
 
-import { AzureBlockBlobStorage } from "../../src/Storage/AzureBlockBlobStorage";
+import { AzureBlockBlobStorage } from '../../src/Storage';
 import { BlobServiceClient } from "@azure/storage-blob";
 import { streamToString } from "../../src/utils/streamToString";
 import { AuthorizationRequired } from "../../src/Exceptions";

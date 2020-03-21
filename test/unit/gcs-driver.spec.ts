@@ -1,6 +1,6 @@
 import uuid from 'uuid/v4';
 
-import { GoogleCloudStorage } from '../../src/Storage/GoogleCloudStorage';
+import { GoogleCloudStorage } from '../../src/Storage';
 import { runGenericStorageSpec } from "../stubs/storage.generic";
 
 const testBucket = process.env.GCS_BUCKET || 'flydrive-test';

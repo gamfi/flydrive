@@ -6,7 +6,7 @@
  */
 
 import S3 from "aws-sdk/clients/s3";
-import { AmazonWebServicesS3Storage } from '../../src/Storage/AmazonWebServicesS3Storage';
+import { AmazonWebServicesS3Storage } from '../../src/Storage';
 import { runGenericStorageSpec } from "../stubs/storage.generic";
 
 const config = {
